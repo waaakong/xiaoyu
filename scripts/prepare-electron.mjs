@@ -26,4 +26,14 @@ execFileSync(process.platform==='win32'?'npm.cmd':'npm',['ci','--omit=dev','--ig
 fs.cpSync(path.join(backend,'node_modules'),path.join(backend,'vendor-modules'),{recursive:true});
 fs.mkdirSync(path.join(build,'runtime'),{recursive:true});
 fs.copyFileSync(process.execPath,path.join(build,'runtime','node.exe'));
-console.log('Prepared Electron backend and Node runtime.');
+const licenseFile=path.join(root,'data','packaging-cache','node-'+process.version+'-LICENSE');
+let license;
+if(fs.existsSync(licenseFile))license=fs.readFileSync(licenseFile);
+else{
+  const response=await fetch('https://raw.githubusercontent.com/nodejs/node/'+process.version+'/LICENSE');
+  if(!response.ok)throw Error('Unable to download Node.js license');
+  license=Buffer.from(await response.arrayBuffer());
+}
+fs.writeFileSync(path.join(build,'runtime','Node.js-LICENSE.txt'),license);
+console.log('Prepared Electron backend, verified Node runtime and license.');
+
