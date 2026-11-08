@@ -1,0 +1,6 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {padVoiceEnd,wavInfo} from '../src/voice-audio.js';
+function wav(seconds){const b=Buffer.alloc(44+Math.round(seconds*48000));b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(24000,24);b.writeUInt32LE(48000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(b.length-44,40);b.fill(37,44);return b;}
+test('tail padding preserves every original PCM byte and updates RIFF lengths',()=>{const input=wav(1.84),copy=Buffer.from(input),output=padVoiceEnd(input);assert.equal(wavInfo(output).seconds,2.84);assert.deepEqual(input,copy);assert.deepEqual(output.subarray(44,input.length),input.subarray(44));assert.ok(output.subarray(input.length).every(b=>b===0));});
+test('tail padding respects 30 second limit without trimming the original speech',()=>{const input=wav(29.8),output=padVoiceEnd(input);assert.equal(wavInfo(output).seconds,30);assert.deepEqual(output.subarray(44,input.length),input.subarray(44));assert.equal(padVoiceEnd(wav(30)).length,wav(30).length);assert.throws(()=>padVoiceEnd(input,1001));});

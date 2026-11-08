@@ -1,0 +1,29 @@
+{
+  "name": "xiaoyu-dsh-bridge",
+  "version": "0.28.1",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "dependencies": {
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.2.1-rc.5 <0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "overrides": {
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5"
+  }
+}

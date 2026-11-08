@@ -1,0 +1,3 @@
+import path from 'node:path';
+export const windowsPowerShell=()=>path.win32.join(process.env.SystemRoot??process.env.WINDIR??'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+export function windowsPowerShellEnv(extra={}){const env={...process.env,...extra};for(const key of Object.keys(env))if(key.toLowerCase()==='psmodulepath')delete env[key];env.PSModulePath=[path.win32.join(process.env.SystemRoot??'C:\\Windows','System32','WindowsPowerShell','v1.0','Modules'),...(process.env.ProgramFiles?[path.win32.join(process.env.ProgramFiles,'WindowsPowerShell','Modules')]:[])].join(';');return env;}

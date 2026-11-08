@@ -1,0 +1,11 @@
+import {EMOJI_CORE,EMOJI_BY_KEY} from './emoji-core.js';
+export const MOODS={happy:'开心',angry:'生气',sad:'难过',shy:'害羞',confused:'疑惑',daily:'日常'};
+const words={happy:['开心','高兴','快乐','哈哈','笑死','好耶','比心','喜欢','谢谢','赞','like','meow','givemoney','color'],angry:['生气','愤怒','可恶','烦死','怒','fool','baka'],sad:['难过','委屈','哭','伤心','累','emo','安慰','sigh'],shy:['害羞','脸红','贴贴','抱抱','可爱'],confused:['疑惑','问号','困惑','无语','震惊','啥','？','surprised','see'],daily:['日常','睡觉','晚安','早安','吃饭','摸鱼','上班','sleep','morning','work','cpu','reply']};
+export function moodOf(tag='',text=''){const value=String(tag).toLowerCase();if(MOODS[value])return value;const semantic=EMOJI_BY_KEY.get(value)||EMOJI_CORE.find(e=>value===e.label||value===e.unicode||String(text).includes(e.unicode)||e.label.length>=2&&String(text).includes(e.label));if(semantic)return semantic.mood;for(const [m,items]of Object.entries(words))if(items.includes(value))return m;for(const [m,items]of Object.entries(words))if(items.some(w=>String(text).toLowerCase().includes(w)))return m;return 'daily';}
+export function explicitMeme(text){return !/(别发|不要发|不用发|不想要)/u.test(text)&&/((发|来|回|给我|想要).{0,12}(表情|梗图|图片)|斗图|^\/表情(?:\s|$))/iu.test(text);}
+export function hasMood(text){return Object.values(words).flat().some(w=>text.toLowerCase().includes(w))||EMOJI_CORE.some(e=>text.includes(e.unicode)||e.label.length>=2&&text.includes(e.label));}
+function grams(s){const out=new Set();for(const w of s.toLowerCase().match(/[\p{L}\p{N}]+/gu)??[]){if(w.length<2)out.add(w);else for(let i=0;i<w.length-1;i++)out.add(w.slice(i,i+2));}return out;}
+export function rankMemes(rows,query='',{mood='',recent=[]}={}){
+  const q=String(query).trim().toLowerCase(),g=grams(q),inferred=mood||moodOf('',q),isEmotion=hasMood(q)||!!mood;
+  return rows.map(a=>{const text=[a.name,a.caption,...a.tags].join(' ').toLowerCase(),ag=grams(text);let score=[...g].filter(x=>ag.has(x)).length+(q&&text.includes(q)?4:0)+(isEmotion&&a.mood===inferred?4:0);const semantic=EMOJI_BY_KEY.get(a.semanticKey),exact=semantic&&(q===semantic.key||q.includes(semantic.unicode)||semantic.label.length>=2&&q.includes(semantic.label))?1:0;return {...a,score,exact,repeat:recent.includes(a.id)?1:0};}).filter(a=>!mood||a.mood===mood).sort((a,b)=>b.exact-a.exact||a.repeat-b.repeat||b.score-a.score||a.id.localeCompare(b.id));
+}

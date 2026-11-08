@@ -1,0 +1,7 @@
+name: xiaoyu_image_test
+display_name: 小鱼图片接口测试
+desc: 验证AstrBot到小鱼网关的本机图片消息段；不是第三方生态兼容性证明。
+version: v1.0.0
+author: Xiaoyu
+support_platforms:
+  - aiocqhttp

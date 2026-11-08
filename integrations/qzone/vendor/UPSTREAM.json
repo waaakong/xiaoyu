@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/diaomin66/astrbot_plugin_qzone_ultra",
+  "retrieved": "2026-11-06",
+  "source": "GitHub connector: main files, content-pinned below",
+  "license": "MIT; see LICENSE",
+  "files": {
+    "astrbot_logging.py": "25bf03db870b7ec37fd870ccf79a753026e22153132f6c5fa7293a9f4d6823da",
+    "client.py": "6205cd1c306d02c59e4cacb9d14b149645f19f8b35329631bb084552f18ab14a",
+    "errors.py": "9a0a147b9f843c18d625e60ee830eb6c311718156e7cfe5f5272f00add62d2d3",
+    "h5_video.py": "b58574d41927284667531fffc5dea25738991b85c4d1d885c219ca021bc3303f",
+    "local_media.py": "226c9ce2e7a6b0c203af990bf69d383f25f730e3b4cc6aa95feb1055dacab623",
+    "media.py": "6b546b21d66f6f01b4e2cad4b6c1297b61465f1dc31be87bc67673a1807ea2c9",
+    "models.py": "f81ba03ab580eda20bac69819c7f8fe9ebaaa3b142987cb05bf301eb5bb44fe7",
+    "parser.py": "fe1ca2e5dbe16bfd176b3d4a92de904f6b0786cfa8a410a94f3b7fc7ec5d6f1d",
+    "render.py": "52d4321775537e13a377c185e87fdbde657df2a743147e03b159beaa5d638c01",
+    "social.py": "115000c4dfd09779695a2fdfe5a2427b5ab61ee19256f875e624e6b80d0e220e",
+    "source_policy.py": "010e960f5b4f2bcb0e9e8a9c2357554bb8f513871f86c7bf8b65d5dc0a2a6df7",
+    "utils.py": "977a2ef0cb64d3b2052734db6d256dbab92e5b2e7a7c684cb0f013231aae4297",
+    "__init__.py": "a55cda3bb8f3c70e44ba5f4e178fbd4471117c1ecf365054f6069df812a9dc6a"
+  }
+}

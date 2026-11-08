@@ -1,0 +1,5 @@
+name: xiaoyu_bridge_context
+display_name: 小鱼增强桥接
+desc: 关联当前增强事件的模型请求，保持本机Codex权限边界
+version: v1.0.0
+author: Xiaoyu

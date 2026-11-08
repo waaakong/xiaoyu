@@ -1,0 +1,24 @@
+{
+  "version": "4.2.0.13",
+  "machine": "8664",
+  "imageSize": 206430208,
+  "coreSha256": "afe3d02c58bada3c35009c0cd58ee1f57b2a00fe53237d0dce649107fddb9a20",
+  "gateRva": "0xb50abc8",
+  "codeChecks": [
+    {
+      "rva": "0x87a93b",
+      "bytes": "803d8602c90a00"
+    },
+    {
+      "rva": "0x87b130",
+      "bytes": "0fb60591fac80ac3"
+    },
+    {
+      "rva": "0x87b140",
+      "bytes": "880d82fac80ac3"
+    }
+  ],
+  "maxTestSeconds": 30,
+  "status": "experimental-not-enabled",
+  "purpose": "Temporary accessibility query gate test; not a native sender"
+}

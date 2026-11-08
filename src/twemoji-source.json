@@ -1,0 +1,209 @@
+{
+  "revision": "b6b55fef1e8636b540a6d016a4729ca8cdf2e60b",
+  "license": "CC-BY-4.0",
+  "attribution": "Twemoji graphics by Twitter, Inc. and other contributors; CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Adaptation: 40-key selection/renaming for dsh-emoji-core@1. Source: https://github.com/jdecked/twemoji/tree/b6b55fef1e8636b540a6d016a4729ca8cdf2e60b",
+  "licensePath": "LICENSE-GRAPHICS",
+  "licenseGitSha": "dc8853a70cfa9d7e8933c080caa147815c659fab",
+  "files": [
+    {
+      "key": "happy",
+      "path": "assets/72x72/1f60a.png",
+      "gitSha": "8a5b034e057c8864ef169e3feb4c5a3e70095b4d"
+    },
+    {
+      "key": "sad",
+      "path": "assets/72x72/1f622.png",
+      "gitSha": "4b8f0e943ddaa8743d98d1712cd994822d4741b4"
+    },
+    {
+      "key": "confused",
+      "path": "assets/72x72/1f615.png",
+      "gitSha": "02cd1fe2d319e28c8bbdcdc7b31fff246ff2d5dc"
+    },
+    {
+      "key": "watching",
+      "path": "assets/72x72/1f440.png",
+      "gitSha": "1b3d0daf01db9701117086f32eb771010cdc50c7"
+    },
+    {
+      "key": "angry",
+      "path": "assets/72x72/1f620.png",
+      "gitSha": "31ecddc81570f5d9d382170d56697570a8461842"
+    },
+    {
+      "key": "speechless",
+      "path": "assets/72x72/1f611.png",
+      "gitSha": "fda6326aff6a6ce20999b423b970bfa401c316b9"
+    },
+    {
+      "key": "doge",
+      "path": "assets/72x72/1f609.png",
+      "gitSha": "703a50e0986369edfadb9fcdf2d849c44fc9b16b"
+    },
+    {
+      "key": "overloaded",
+      "path": "assets/72x72/1f635-200d-1f4ab.png",
+      "gitSha": "f2ad9dc1f96b522c70d2430dca8bd3459b6ac9ac"
+    },
+    {
+      "key": "neutral",
+      "path": "assets/72x72/1f610.png",
+      "gitSha": "17628f953453936b240ae5e0c08b7210de22f81b"
+    },
+    {
+      "key": "laughing",
+      "path": "assets/72x72/1f606.png",
+      "gitSha": "ac4797ee40d085f2b1c7fa969a24130d7cc448a3"
+    },
+    {
+      "key": "crying",
+      "path": "assets/72x72/1f62d.png",
+      "gitSha": "554edf044f4836a8d3529f10b7910e80bfa76117"
+    },
+    {
+      "key": "sweating",
+      "path": "assets/72x72/1f605.png",
+      "gitSha": "bfc7c287f5c0b2e1c370e6a0d812cd44e0a82f75"
+    },
+    {
+      "key": "thinking",
+      "path": "assets/72x72/1f914.png",
+      "gitSha": "354f5a14e28b1df7532c1bc238e7aa38da43a389"
+    },
+    {
+      "key": "okay",
+      "path": "assets/72x72/1f44c.png",
+      "gitSha": "6a7b8976930cdd0db5e618ec61ebac6a27bde818"
+    },
+    {
+      "key": "nodding",
+      "path": "assets/72x72/1f642-200d-2195-fe0f.png",
+      "gitSha": "88a87de2263230b580e9ad53e53f218f4f2c33a2"
+    },
+    {
+      "key": "sleeping",
+      "path": "assets/72x72/1f634.png",
+      "gitSha": "4c3806dea524e690650af15d80e98c2cdd17703b"
+    },
+    {
+      "key": "hurt",
+      "path": "assets/72x72/1f97a.png",
+      "gitSha": "b1cc8fb71eeff62674eca50783520327fca9fe0a"
+    },
+    {
+      "key": "peeking",
+      "path": "assets/72x72/1fae3.png",
+      "gitSha": "b4572380a8c7b86e0959abf04f256178e36cd77e"
+    },
+    {
+      "key": "approve",
+      "path": "assets/72x72/1f44d.png",
+      "gitSha": "51b8c75bb9ee4bafa6d9888f41e0b7d35ad121a4"
+    },
+    {
+      "key": "heart",
+      "path": "assets/72x72/1faf6.png",
+      "gitSha": "23cf0502f23c71529d8fd926e6226eae2d2767b2"
+    },
+    {
+      "key": "shy",
+      "path": "assets/72x72/1f633.png",
+      "gitSha": "47093b1bfe8d3a27f90c7198c914e7206db4d4c1"
+    },
+    {
+      "key": "star-eyes",
+      "path": "assets/72x72/1f929.png",
+      "gitSha": "dc94d7d914901c1287eb40786561c7585b607ef1"
+    },
+    {
+      "key": "laugh-cry",
+      "path": "assets/72x72/1f602.png",
+      "gitSha": "e1113e8e3ff02bfcf3518b3d3846b6e6e3d55c79"
+    },
+    {
+      "key": "touched",
+      "path": "assets/72x72/1f979.png",
+      "gitSha": "d109b1645327671a9c9564ebac4891698697dd0b"
+    },
+    {
+      "key": "scared",
+      "path": "assets/72x72/1f631.png",
+      "gitSha": "fa3debccac1b8bc44a57f17da3be22e9c5e9b1f8"
+    },
+    {
+      "key": "facepalm",
+      "path": "assets/72x72/1f926.png",
+      "gitSha": "0e5111fa633caaaaf3a216e661a72b59241b00da"
+    },
+    {
+      "key": "eye-roll",
+      "path": "assets/72x72/1f644.png",
+      "gitSha": "1bafe2a637587bcc2e19fba1aa3b988f4a546593"
+    },
+    {
+      "key": "sigh",
+      "path": "assets/72x72/1f62e-200d-1f4a8.png",
+      "gitSha": "37db70540a88fbd57398f5fee49428edcea0b100"
+    },
+    {
+      "key": "frustrated",
+      "path": "assets/72x72/1f62b.png",
+      "gitSha": "db9edc1eb7fd1c057382ca6e19f365283bb3b437"
+    },
+    {
+      "key": "playful",
+      "path": "assets/72x72/1f61c.png",
+      "gitSha": "8aeab47c625b3eee71eb80d839155325b7cae109"
+    },
+    {
+      "key": "snickering",
+      "path": "assets/72x72/1f92d.png",
+      "gitSha": "6cc00cc7937b004837634a021219eb220674d1f2"
+    },
+    {
+      "key": "sarcastic",
+      "path": "assets/72x72/1f60f.png",
+      "gitSha": "4fca129f12df16e74076954dd3ba00c8d8c87ab8"
+    },
+    {
+      "key": "cool",
+      "path": "assets/72x72/1f60e.png",
+      "gitSha": "1a0560df6d34be01e1a7a47058c7b71a5129a959"
+    },
+    {
+      "key": "celebrate",
+      "path": "assets/72x72/1f389.png",
+      "gitSha": "863661cd753971997caca832995c202b13c76364"
+    },
+    {
+      "key": "cheer",
+      "path": "assets/72x72/1f4aa.png",
+      "gitSha": "ff53dfc3dc6d3e63943d10b2580fcacf0f8c85dc"
+    },
+    {
+      "key": "thanks",
+      "path": "assets/72x72/1f64f.png",
+      "gitSha": "b18f35a7f6efb012e7af36eeedd026f74b9f522c"
+    },
+    {
+      "key": "sorry",
+      "path": "assets/72x72/1f647.png",
+      "gitSha": "7f926955602dafe2528962b0ff8caf7a080c5851"
+    },
+    {
+      "key": "hug",
+      "path": "assets/72x72/1f917.png",
+      "gitSha": "6d0f049fac0332301709a682d8504aec66f592c1"
+    },
+    {
+      "key": "please",
+      "path": "assets/72x72/1f932.png",
+      "gitSha": "711417518980edf2a30f5c7f0048da0966825439"
+    },
+    {
+      "key": "applause",
+      "path": "assets/72x72/1f44f.png",
+      "gitSha": "8512b44bfef73818cbac073fde016319846bea16"
+    }
+  ]
+}

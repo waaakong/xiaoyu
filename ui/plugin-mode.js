@@ -1,0 +1,4 @@
+export function addPluginMode(form,policy){
+  const grid=form.querySelector('.form-grid');const label=document.createElement('label');label.textContent='插件处理模式';const select=document.createElement('select');select.name='pluginMode';for(const [value,text]of [['commands','仅明确命令（原方式）'],['enhanced','聊天增强：普通回复走AstrBot插件链']]){const option=document.createElement('option');option.value=value;option.textContent=text;select.append(option);}select.value=policy.pluginMode??'commands';label.append(select);grid.append(label);
+  const limitLabel=document.createElement('label');limitLabel.textContent='每轮插件模型调用上限';const limit=document.createElement('input');limit.name='pluginCallLimit';limit.type='number';limit.min='1';limit.max='6';limit.value=policy.pluginCallLimit??3;limitLabel.append(limit);grid.append(limitLabel);
+}

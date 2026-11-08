@@ -1,0 +1,6 @@
+GSAP 3.15.1
+Copyright 2026, GreenSock. All rights reserved.
+Subject to the Standard License: https://gsap.com/standard-license
+Source package: https://registry.npmjs.org/gsap/-/gsap-3.15.1.tgz
+The minified library is embedded in 2026-11-05-glass-workbench.html with its original copyright header.
+The project does not claim ownership of GSAP.

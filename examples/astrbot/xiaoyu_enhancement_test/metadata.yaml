@@ -1,0 +1,5 @@
+name: xiaoyu_enhancement_test
+display_name: 小鱼增强链离线测试
+desc: 仅供独立夹具验证辅助模型调用、提示注入和回复装饰
+version: v1.0.0
+author: Xiaoyu

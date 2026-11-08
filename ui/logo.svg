@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 64 64" fill="none">
+  <title>小鱼 · 简笔画</title>
+  <path d="M9 32C17 20 31 19 43 32C31 45 17 44 9 32Z" stroke="#8BCDDD" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M43 32L54 23V41L43 32Z" stroke="#8BCDDD" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="19" cy="30" r="2" fill="#8BCDDD"/>
+</svg>
