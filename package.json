@@ -1,6 +1,6 @@
 {
   "name": "xiaoyu",
-  "version": "1.0.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -18,6 +18,8 @@
     "start:legacy": "node src/desktop-launch.js"
   },
   "dependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
     "sharp": "^0.35.5",
     "undici": "7.30.1",
     "ws": "^8.18.0"
@@ -33,5 +35,8 @@
     "type": "git",
     "url": "https://github.com/waaakong/xiaoyu.git"
   },
-  "productName": "小鱼"
+  "productName": "小鱼",
+  "overrides": {
+    "zod": "4.6.6"
+  }
 }

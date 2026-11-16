@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "status": "experimental-unvalidated",
+  "version": "4.2.0.13",
+  "coreSha256": "afe3d02c58bada3c35009c0cd58ee1f57b2a00fe53237d0dce649107fddb9a20",
+  "dllSha256": "f9ea179e6063be650a6ebb2d650a13291bc81bf4f45df1160e6495cf8473dcdb",
+  "sourceSha256": "7eae4ffa98a26b1604268047829d5e75f450ab2f5b5e887aa08904703fec0cac",
+  "checks": [
+    {
+      "rva": "0x71ea50",
+      "bytes": "555657534883ec38488d6c243048c74500feffffff4889ceb9a8070000e89a8a"
+    },
+    {
+      "rva": "0x790db0",
+      "bytes": "5556574883ec50488d6c245048c745f8feffffff4889ce488d7dd84889f9e84d"
+    },
+    {
+      "rva": "0xf910",
+      "bytes": "554157415641545657534883ec40488d6c244048c745f8feffffff4c894de84c"
+    },
+    {
+      "rva": "0x1a20280",
+      "bytes": "5541565657534881ece0010000488dac248000000048c78558010000feffffff"
+    },
+    {
+      "rva": "0x76a750c",
+      "bytes": "40534883ec20488bd9eb0f488bcbe8e1cd180085c07413488bcbe899361a0048"
+    },
+    {
+      "rva": "0x3e38226",
+      "bytes": "c7801801000001000000488d8dc8000000488b9578020000e86df71efc90488b"
+    },
+    {
+      "rva": "0xf055",
+      "bytes": "488b05940f480b48ffc04889058a0f480b488985c8020000488b4e484885c974"
+    },
+    {
+      "rva": "0x1db9d60",
+      "bytes": "555657534883ec38488d6c243048c74500feffffff4889ceb900080000e88ad7"
+    },
+    {
+      "rva": "0x1ad16e0",
+      "bytes": "5556574883ec50488d6c245048c745f8feffffff4889ce488d7dd84889f9e81d"
+    },
+    {
+      "rva": "0x1c47ac0",
+      "bytes": "5556574883ec30488d6c243048c745f8feffffff4889ceb990070000e82bfaa5"
+    },
+    {
+      "rva": "0x1c561a0",
+      "bytes": "555657534883ec48488d6c244048c74500feffffff4889ce48b8010000000100"
+    },
+    {
+      "rva": "0x1db93bd",
+      "bytes": "c7801801000003000000488d8d50020000e85dfb77fe90488b8d900200008981"
+    },
+    {
+      "rva": "0x49eb2ee",
+      "bytes": "c780180100002b0000004889f9e8d01809fc90488b8d90000000888158070000"
+    },
+    {
+      "rva": "0x6e55af0",
+      "bytes": "554157415641545657534883ec40488d6c244048c745f8feffffff4c89cb4d89"
+    },
+    {
+      "rva": "0x6e56d10",
+      "bytes": "5541574156415541545657534883ec68488d6c246048c74500feffffff4489cf"
+    },
+    {
+      "rva": "0x6e55690",
+      "bytes": "5541565657534881ecb0000000488dac24800000000f29752048c74518feffff"
+    },
+    {
+      "rva": "0x5f4ac00",
+      "bytes": "5541574156415541545657534881ec68020000488dac248000000048c785e001"
+    },
+    {
+      "rva": "0x790e45",
+      "bytes": "0f11867807000048c786880700000000000048c786900700000f0000004889f0"
+    }
+  ],
+  "transport": "native-text",
+  "receive": "existing-independent-database-reader",
+  "defaultSubmissionLimit": 1,
+  "defaultTarget": "filehelper",
+  "loaded": false,
+  "offlineTest": false,
+  "voiceExperimental": false,
+  "nativeProtocol": 2,
+  "sourceName": "mention-bridge.c",
+  "mentionsExperimental": true
+}

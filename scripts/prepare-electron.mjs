@@ -23,6 +23,7 @@ for(const dir of ['src','ui','personas','integrations','scripts','docs']){
 }
 for(const file of ['package.json','package-lock.json','persona.md','release-notes.json'])fs.copyFileSync(path.join(root,file),path.join(backend,file));
 execFileSync(process.platform==='win32'?'npm.cmd':'npm',['ci','--omit=dev','--ignore-scripts'],{cwd:backend,stdio:'inherit',shell:process.platform==='win32'});
+execFileSync(process.execPath,['--input-type=module','-e',"await import('./integrations/dsh/index.mjs')"],{cwd:backend,stdio:'inherit'});
 fs.cpSync(path.join(backend,'node_modules'),path.join(backend,'vendor-modules'),{recursive:true});
 fs.mkdirSync(path.join(build,'runtime'),{recursive:true});
 fs.copyFileSync(process.execPath,path.join(build,'runtime','node.exe'));
