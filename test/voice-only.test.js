@@ -60,15 +60,26 @@ for(const platform of ['qq','wechat'])for(const enhanced of [false,true]){
   });
   for(const failure of ['synthesis','unknown','mode-change','cancel','revoke'])test(`${platform} enhanced=${enhanced}: ${failure} never leaks body or retries`,async t=>{
     const f=fixture(t,{platform,enhanced,failure});await f.run();assert.equal(f.syntheses.length,1);
-    assert.ok(!f.sent.some(s=>s.text?.includes('你好呀')));
-    assert.deepEqual(f.sent.map(s=>s.kind),failure==='synthesis'?['text']:failure==='unknown'?['voice']:[]);
     const rows=f.store.historyPage(f.scope).filter(r=>r.role==='assistant');assert.equal(rows.length,1);
-    assert.notEqual(rows[0].status,'delivered');if(failure==='unknown')assert.equal(rows[0].status,'unknown');
+    if(failure==='synthesis'){
+      assert.deepEqual(f.sent,[{kind:'text',text:'你好呀\n今天过得怎么样'}]);
+      assert.equal(rows[0].status,'delivered');
+    }else{
+      assert.ok(!f.sent.some(s=>s.text?.includes('你好呀')));
+      assert.deepEqual(f.sent.map(s=>s.kind),failure==='unknown'?['voice']:[]);
+      assert.notEqual(rows[0].status,'delivered');if(failure==='unknown')assert.equal(rows[0].status,'unknown');
+    }
   });
 }
 
 test('unverified WeChat voice capability refuses before paid synthesis',async t=>{
-  const f=fixture(t,{platform:'wechat',voiceCapability:false});await f.run();assert.equal(f.syntheses.length,0);assert.deepEqual(f.sent.map(s=>s.kind),['text']);
+  const f=fixture(t,{platform:'wechat',voiceCapability:false});await f.run();assert.equal(f.syntheses.length,0);assert.deepEqual(f.sent,[{kind:'text',text:'你好呀\n今天过得怎么样'}]);
+});
+
+test('transient throttling retries once and keeps the voice reply',async t=>{
+  const f=fixture(t,{platform:'qq'}),retries=[];
+  let calls=0;f.bridge.voice.synthesize=async(text,options)=>{calls++;retries.push(options.retry);options.assertFresh();if(calls===1)throw Error('Breeze限流，请稍后重试');return {file:'mock.wav',assertFresh:options.assertFresh};};
+  await f.run();assert.equal(calls,2);assert.deepEqual(retries,[false,true]);assert.deepEqual(f.sent,[{kind:'voice'}]);
 });
 
 for(const platform of ['qq','wechat'])for(const enhanced of [false,true])test(`${platform} enhanced=${enhanced}: group voice does not emit a separate text mention`,async t=>{const f=fixture(t,{platform,enhanced,group:true});await f.run();assert.deepEqual(f.sent,[{kind:'voice'}]);assert.equal(f.syntheses.length,1);});

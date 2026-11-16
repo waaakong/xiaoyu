@@ -44,10 +44,11 @@ export class OneBot extends EventEmitter {
     beforeSend?.();if(String(member?.user_id)!==String(mention.id)||member.group_id!=null&&String(member.group_id)!==String(event.group_id))return null;
     if(beforeMention&&!beforeMention())return null;return String(mention.id);
   }
-  async reply(event,text,{beforeSend,natural=false,maxParts=3,mention,beforeMention,quote}={}){
+  async reply(event,text,{beforeSend,beforePart,natural=false,maxParts=3,mention,beforeMention,quote}={}){
     const receipts=[];
     const mentionId=await this.prepareMention(event,{mention,beforeMention,beforeSend});
     for(const part of natural?chatParts(text,{maxParts}):[text]){
+    await beforePart?.();
     const chars=Array.from(part);for(let i=0;i<chars.length;i+=900){
       beforeSend?.();const message=[{type:'text',data:{text:chars.slice(i,i+900).join('')}}];
       if(!receipts.length&&quote){if(!/^-?\d{1,24}$/.test(String(quote.id)))throw Error('引用消息编号无效');message.unshift({type:'reply',data:{id:String(quote.id)}});}

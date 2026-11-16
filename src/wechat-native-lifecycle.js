@@ -9,16 +9,27 @@ import {WeChatNativeClient} from './wechat-native.js';
 const exec=promisify(execFile),read=file=>JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,''));
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
-export async function ensureWeChatNative(backend,{reader}){
+export function registeredNativeBuild(directory){
+  const file=path.join(directory,'active-build.json');if(!fs.existsSync(file))return null;
+  const selected=read(file);if(typeof selected.directory!=='string'||!/^build[-a-z0-9]*$/.test(selected.directory))throw Error('WECHAT_NATIVE_BUILD_DIRECTORY_INVALID');
+  const build=path.resolve(directory,selected.directory);
+  if(path.dirname(build)!==path.resolve(directory)||fs.realpathSync(build)!==build)throw Error('WECHAT_NATIVE_BUILD_DIRECTORY_INVALID');
+  const manifest=read(path.join(build,'manifest.json')),validation=read(path.join(build,'validation.json'));
+  if(selected.dllSha256!==manifest.dllSha256||validation.nativeDll!==manifest.dllSha256||validation.confirmed!==true)throw Error('WECHAT_NATIVE_BUILD_MISMATCH');
+  return build;
+}
+
+async function ensureNativeTransport(backend,{reader}){
   const manager=backend.manager,client=await inspectWeChat(manager.config.executable);
   if(client.version!=='4.2.0.13')throw Error('WECHAT_NATIVE_VERSION_UNSUPPORTED');
   const directory=path.join(root,'data','wechat-native-research');
   const localBuild=path.join(directory,'build'),mediaBuild=path.join(directory,'build-media'),hasMedia=fs.existsSync(path.join(mediaBuild,'validation.json'));
   const mentionBuild=path.join(directory,'build-mentions'),hasMention=fs.existsSync(path.join(mentionBuild,'validation.json'))&&read(path.join(mentionBuild,'validation.json')).mentionValidated===true;
-  const build=hasMention?mentionBuild:hasMedia?mediaBuild:fs.existsSync(path.join(localBuild,'manifest.json'))?localBuild:path.join(root,'integrations','wechat','native','bundle');
-  const manifestFile=path.join(build,'manifest.json'),validationFile=hasMedia||hasMention?path.join(build,'validation.json'):fs.existsSync(path.join(directory,'self-test-result.json'))?path.join(directory,'self-test-result.json'):path.join(build,'validation.json');
+  const registered=registeredNativeBuild(directory),build=registered??(hasMention?mentionBuild:hasMedia?mediaBuild:fs.existsSync(path.join(localBuild,'manifest.json'))?localBuild:path.join(root,'integrations','wechat','native','bundle'));
+  const manifestFile=path.join(build,'manifest.json'),validationFile=registered||hasMedia||hasMention?path.join(build,'validation.json'):fs.existsSync(path.join(directory,'self-test-result.json'))?path.join(directory,'self-test-result.json'):path.join(build,'validation.json');
   if(!fs.existsSync(manifestFile)||!fs.existsSync(validationFile))throw Error('WECHAT_NATIVE_NOT_PREPARED：尚未准备并实测此版本原生组件');
   const manifest=read(manifestFile),validation=read(validationFile);
+  if(!['bridge.c','media-bridge.c','mention-bridge.c'].includes(manifest.sourceName??'bridge.c')||hash(path.join(root,'integrations/wechat/native',manifest.sourceName??'bridge.c'))!==manifest.sourceSha256)throw Error('SOURCE_CHANGED_REBUILD_REQUIRED');
   const mediaMask=validation.mediaMask??0;if(![0,1,3,19].includes(mediaMask)||mediaMask&&manifest.nativeProtocol!==2||mediaMask===19&&(!manifest.mentionsExperimental||validation.mentionValidated!==true))throw Error('WECHAT_NATIVE_MEDIA_NOT_VALIDATED');
   if(validation.confirmed!==true||validation.target!=='filehelper'||validation.nativeDll!==manifest.dllSha256||
      hash(path.join(build,'XiaoyuWechatNative.dll'))!==manifest.dllSha256||hash(client.core)!==manifest.coreSha256)throw Error('WECHAT_NATIVE_BUILD_MISMATCH');
@@ -36,4 +47,57 @@ export async function ensureWeChatNative(backend,{reader}){
   Object.assign(manager.config,{hookUrl:'http://127.0.0.1:'+session.port,hookToken:session.token});
   fs.writeFileSync(manager.file+'.tmp',JSON.stringify(manager.config),{mode:0o600});fs.renameSync(manager.file+'.tmp',manager.file);
   return transport.verify({accountDirectory:reader.accountDirectory});
+}
+
+// A reviewed, human-accepted voice component must follow the client restart that
+// re-injects the message transport; without it chat voice silently degrades to text.
+export async function fetchNativeHealth(session){
+  try{
+    const response=await fetch('http://127.0.0.1:'+session.port+'/health',{headers:{Authorization:'Bearer '+session.token},signal:AbortSignal.timeout(1500),redirect:'error'});
+    if(!response.ok)return null;
+    return await response.json();
+  }catch{return null;}
+}
+
+export async function fetchVoiceHealth(session,pid){
+  const health=await fetchNativeHealth(session);
+  return health?.pid===pid?health:null;
+}
+
+export async function ensureWeChatVoice(backend,{pid,directory=path.join(root,'data','wechat-native-research'),execute=exec,readJson=read,health=fetchVoiceHealth}={}){
+  const build=path.join(directory,'build-voice');
+  try{
+    const manifest=readJson(path.join(build,'manifest.json')),validation=readJson(path.join(directory,'voice-validation.json')),dll=path.join(build,'XiaoyuWechatVoice.dll');
+    if(manifest.offlineTest!==false||manifest.voiceExperimental!==true||validation.confirmed!==true||validation.voiceBubbleVerified!==true||validation.dllSha256!==manifest.dllSha256||hash(dll)!==manifest.dllSha256)return {state:'unavailable'};
+    const sessionFile=path.join(directory,'voice-session.json'),session=fs.existsSync(sessionFile)?readJson(sessionFile):null;
+    const live=session?await health(session,pid):null;
+    if(live?.integration==='XiaoyuVoice-1'&&live.pid===pid&&live.verified===true&&Number(live.limit)>1)return {state:'ready'};
+    const python=backend.paths().python,args=['-B',path.join(root,'scripts','load-wechat-voice.py'),'--confirm-sha256',manifest.dllSha256],options={cwd:root,windowsHide:true,timeout:45000,maxBuffer:32000};
+    // A finite trial session that is still alive only needs the validated rearm.
+    if(!(live?.pid===pid&&Number(live.limit)===1))await execute(python,args,options);
+    await execute(python,[...args,'--enable-validated'],options);
+    const after=fs.existsSync(sessionFile)?await health(readJson(sessionFile),pid):null;
+    return after?.integration==='XiaoyuVoice-1'&&after.pid===pid&&Number(after.limit)>1?{state:'ready'}:{state:'failed'};
+  }catch(error){return {state:'failed',error:String(error?.message??error).slice(0,300)};}
+}
+
+// Dashboard fallback: arm voice for the transport that is live right now, so a
+// manual click never depends on the app having been restarted after an update.
+export async function enableWeChatVoice(backend,{directory=path.join(root,'data','wechat-native-research'),readJson=read,health=fetchNativeHealth,voiceHealth=fetchVoiceHealth,execute=exec}={}){
+  const file=path.join(directory,'session.json');
+  if(!fs.existsSync(file))return {state:'unavailable',error:'微信消息通道尚未连接，请先核验并启动微信接入'};
+  let pid;
+  try{
+    const live=await health(readJson(file));
+    pid=Number(live?.pid);
+    if(live?.verified!==true||!Number.isSafeInteger(pid)||pid<=0)return {state:'unavailable',error:'微信原生通道未就绪，请先核验并启动微信接入'};
+  }catch(error){return {state:'failed',error:String(error?.message??error).slice(0,300)};}
+  return ensureWeChatVoice(backend,{pid,directory,readJson,execute,health:voiceHealth});
+}
+
+// Voice arming never decides whether WeChat connects: a denied injection leaves text intact.
+export async function ensureWeChatNative(backend,{reader}){
+  const health=await ensureNativeTransport(backend,{reader});
+  await ensureWeChatVoice(backend,{pid:health?.pid});
+  return health;
 }

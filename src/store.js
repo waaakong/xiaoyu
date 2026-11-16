@@ -1,3 +1,4 @@
+import {SOCIAL_EXPRESSION} from './social-expression.js';
 import {ChatState} from './chat-state.js';
 import {Continuity} from './continuity.js';
 import {fixedMemoryPrompt} from './fixed-memory.js';
@@ -9,6 +10,8 @@ import {Cognition} from './cognition.js';
 import {SharedMemory} from './shared-memory.js';
 import {LivingMemory} from './living-memory.js';
 import {DatabaseSync} from 'node:sqlite';
+import {memoryLine} from './memory-tiers.js';
+import {sqliteUtcToMs} from './time-context.js';
 export class Store {
   constructor(file) {
     this.db=new DatabaseSync(file);
@@ -46,10 +49,11 @@ export class Store {
   tagTurn(id,personaId,runId,personaText=''){this.db.prepare('UPDATE messages SET personaId=?,personaVersion=?,runId=? WHERE id=?').run(personaId,personaText?createHash('sha256').update(personaText).digest('hex'):null,runId,id);}
   status(id,status) {this.db.prepare('UPDATE messages SET status=? WHERE id=?').run(status,id);const r=this.db.prepare('SELECT * FROM messages WHERE id=?').get(id);if(r)this.living.indexMessage(r);}
   history(scope,limit,before=Number.MAX_SAFE_INTEGER,charBudget=40000) {const rows=this.db.prepare("SELECT id,role,text,speaker,created,status,personaId,personaVersion,runId FROM messages WHERE scope=? AND id<? AND status IN ('observed','received','delivered') ORDER BY id DESC LIMIT ?").all(scope,before,limit);let n=0;return rows.filter(r=>{if(this.living.blocked(r.id))return false;n+=r.text.length;return n<=charBudget;}).reverse();}
+  lastReply(scope) {const row=this.db.prepare("SELECT created FROM messages WHERE scope=? AND role='assistant' AND status='delivered' ORDER BY id DESC LIMIT 1").get(scope);return row?sqliteUtcToMs(row.created):null;}
   memories(scope) {return this.db.prepare('SELECT * FROM memories WHERE scope=? AND (expires IS NULL OR expires>?) ORDER BY id DESC LIMIT 500').all(scope,Date.now());}
   remember(scope,key,value,options={}) {return this.living.remember(scope,key,value,options);}
   forget(scope,id) {return this.living.forget(scope,id);}
-  recall(scope,query,budget) {let result='';for(const m of this.living.candidates(scope,query).slice(0,8)){const line=m.key+': '+m.value+'\n';if(result.length+line.length<=budget)result+=line;}return result;}
+  recall(scope,query,budget) {let result='';for(const m of this.living.candidates(scope,query).slice(0,8)){const line=memoryLine(m).trimEnd()+'\n';if(result.length+line.length<=budget)result+=line;}return result;}
   isPaused(scope) {return Boolean(this.db.prepare('SELECT 1 FROM paused WHERE scope=?').get(scope));}
   pause(scope,on) {if(on)this.db.prepare('INSERT OR IGNORE INTO paused VALUES(?)').run(scope);else this.db.prepare('DELETE FROM paused WHERE scope=?').run(scope);}
   reset(scope) {this.chatState.reset(scope);this.db.prepare('DELETE FROM episode_terms WHERE scope=?').run(scope);this.db.prepare('DELETE FROM messages WHERE scope=?').run(scope);this.db.prepare('DELETE FROM summaries WHERE scope=?').run(scope);this.db.prepare('DELETE FROM receipts WHERE scope=?').run(scope);}
@@ -61,7 +65,7 @@ export class Store {
   touchContact(account,kind,peer,name){this.db.prepare('INSERT INTO contacts(account,kind,peer,name) VALUES(?,?,?,?) ON CONFLICT(account,kind,peer) DO NOTHING').run(account,kind,peer,name.slice(0,120));}
   personas(){return this.db.prepare('SELECT * FROM personas ORDER BY category,name').all();}
   fixedMemories(){return this.db.prepare('SELECT id,text FROM fixed_memories ORDER BY rowid').all();}
-  personaInstructions(text,member,context){return withSocialBoundaries(text)+fixedMemoryPrompt(this,member,context);}
+  personaInstructions(text,member,context){return withSocialBoundaries(text)+fixedMemoryPrompt(this,member,context)+(context?.humanStyle===false?'':'\n'+SOCIAL_EXPRESSION);}
   persona(id){return this.db.prepare('SELECT * FROM personas WHERE id=?').get(id);}
   savePersona({id,name,category,text}){this.db.prepare('INSERT INTO personas(id,name,category,text) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,category=excluded.category,text=excluded.text,updated=CURRENT_TIMESTAMP').run(id,name,category,text);this.cognition?.snapshot({id,name,category,text});}
   deletePersona(id){this.db.prepare('DELETE FROM personas WHERE id=?').run(id);}

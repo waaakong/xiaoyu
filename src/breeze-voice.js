@@ -32,9 +32,9 @@ export class Voice {
   async quota(){const r=await this.json('/v1/balance');this.balance={balance:r.balance??null,millicredits:r.balance_millicredits??null,pending:r.settlement_pending===true,checkedAt:new Date().toISOString()};return this.balance;}
   cancel(){this.active?.abort();return {cancelled:!!this.active};}
   prune(){if(!fs.existsSync(this.output))return;for(const [i,f]of fs.readdirSync(this.output).filter(n=>/^[a-f0-9-]+\.wav$/.test(n)).map(name=>({name,time:fs.statSync(path.join(this.output,name)).mtimeMs})).sort((a,b)=>b.time-a.time).entries())if(i>=20||Date.now()-f.time>3600000)fs.rmSync(path.join(this.output,f.name),{force:true});}
-  async synthesize(text,{signal,personaId='default',emotion={},scope='preview',turnId='',assertFresh=()=>{}}={}){
+  async synthesize(text,{signal,personaId='default',emotion={},scope='preview',turnId='',assertFresh=()=>{},retry=false}={}){
     const c=this.config();if(!c.enabled)throw Error('语音总开关尚未开启');if(/^(qq|wechat):/.test(scope)&&!this.chatApproved(scope))throw Error('请在当前聊天重新保存Breeze语音策略，旧语音偏好不会自动消费');const input=spokenText(text);if(!input||Array.from(input).length>c.maxChars)throw Error('语音正文需为1—'+c.maxChars+'字，不自动截断');
-    const direction=this.direction({personaId,emotion}),key=this.secret.read();if(!key)throw Error('请先配置Breeze API Key');validateBreezeKey(key);const requestKey=turnId?digest([scope,personaId,turnId]):'';if(requestKey&&this.seen.has(requestKey))throw Error('这轮语音已提交，不重复合成或收费');if(this.busy)throw Error('语音引擎忙，本轮未合成');
+    const direction=this.direction({personaId,emotion}),key=this.secret.read();if(!key)throw Error('请先配置Breeze API Key');validateBreezeKey(key);const requestKey=turnId?digest([scope,personaId,turnId]):'';if(requestKey&&this.seen.has(requestKey)&&!retry)throw Error('这轮语音已提交，不重复合成或收费');if(this.busy)throw Error('语音引擎忙，本轮未合成');
     this.busy=true;this.active=new AbortController();const combined=AbortSignal.any([...(signal?[signal]:[]),this.active.signal,AbortSignal.timeout(c.timeoutSeconds*1000)]),started=Date.now(),cacheKey=digest([scope,personaId,input,direction,c.model,c.guidanceScale]),revision=direction.revision;
     const fresh=()=>{combined.throwIfAborted();assertFresh();if(digest(this.config())!==revision)throw Error('语音设置已改变，取消本次发送');};let submitted=false,jobId=null;
     try{

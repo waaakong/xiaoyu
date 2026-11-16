@@ -47,7 +47,7 @@ export async function renderEngineDashboard({container:s,api,node,button,edit,ge
       if(health?.lastFailure){const failure=health.lastFailure;card.append(node('p','engine-warning',`最近未完成 ${stamp(failure.at)} · ${/^[A-Z0-9_]{2,80}$/.test(failure.code??'')?failure.code:'未报告错误码'}。具体结果请结合下方调用状态核对。`));}
       if(health?.lastFormatWarning)card.append(node('p','engine-warning',`附加数据未采用 ${stamp(health.lastFormatWarning.at)} · 回复正文已保留，本轮未写入无法校验的附加记忆。`));
       const actions=node('div','engine-actions');actions.append(button('检测连接与模型',async()=>{await api('engines/connect',{});await reload();await refresh();}),button('配置DSH',configureDsh,'quiet'));card.append(actions);
-    }else card.append(node('p','footnote',`${info?.models?.length??0} 个模型 · 使用原生额度接口，查询不调用模型`));
+    }else {card.append(node('p','footnote',`${info?.models?.length??0} 个模型 · 使用原生额度接口，查询不调用模型`));card.append(button('连接本机Codex',async()=>{await api('engines/connect',{engine:'codex'});await reload();await refresh();},'secondary'));}
     card.dataset.engine=id;cards.append(card);
   }
   s.append(cards);

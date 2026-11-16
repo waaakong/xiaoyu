@@ -391,3 +391,9 @@ button.primary {background:var(--hub-blue)}
 #personaHistoryList .cognition-panel{display:grid;grid-template-columns:minmax(110px,.6fr) minmax(180px,1fr) auto;align-items:center;gap:12px;padding:15px 20px}
 #personaHistoryList :is(h2,small,.actions){margin:0;border:0;padding:0}
 @media(max-width:920px){#personaHistoryList .cognition-panel{grid-template-columns:1fr}#personaHistoryList .actions{flex-wrap:wrap}}
+
+/* Keep every global connection visible, including offline channels, at all widths. */
+.connection-strip{flex:0 0 auto;min-height:35px;flex-wrap:wrap;overflow:visible;padding-block:5px;gap:4px 12px}
+.connection-strip #headerQq,.connection-strip #headerWechat,.connection-strip #headerCodex,.connection-strip #headerDsh,.connection-strip #headerPlugins{display:inline-flex;flex:0 0 auto;white-space:nowrap}
+.connection-strip .status-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:760px){.connection-strip{gap:3px 9px;padding-inline:12px}.connection-strip .status-chip{font-size:10px;min-height:27px}}

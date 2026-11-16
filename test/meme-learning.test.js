@@ -13,6 +13,13 @@ import {Bridge} from '../src/bridge.js';
 
 const scope='qq:99:group:20';
 const analysis=(patch={})=>({imageId:'m0',mediaType:'sticker',sensitive:false,confidence:.96,caption:'猫咪点头',meaning:'通常用于赞同',contextMeaning:'这次是在安慰对方',mood:'happy',tags:['点头','认同'],favorite:true,likeScore:90,reason:'符合温和幽默的人格',usage:'赞同或安慰',avoid:'严肃争执时避免误解',...patch});
+test('merged-turn image collection retains the actual image source and never reuses a forgotten source',async t=>{
+ const f=await fixture(t),text=f.make(),image=f.make(),packet=await f.learner.prepare(image.r);packet.entries[0].sourceId=image.sourceId;
+ await f.learner.consume(image.r,packet,{memeInsights:[analysis()]},{sourceId:text.sourceId});
+ const origins=f.store.db.prepare('SELECT sourceId FROM meme_origins').all();assert.deepEqual(origins.map(x=>x.sourceId),[image.sourceId]);
+ const erased=f.make(),other=await f.learner.prepare(erased.r);other.entries[0].sourceId=erased.sourceId;f.store.db.prepare('INSERT INTO memory_blocked VALUES(?,?)').run(scope,erased.sourceId);
+ await f.learner.consume(erased.r,other,{memeInsights:[analysis()]},{sourceId:text.sourceId});assert.equal(f.store.db.prepare('SELECT count(*) n FROM meme_origins').get().n,1);
+});
 async function fixture(t){
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'xy-meme-learning-')),store=new Store(':memory:'),media=new Media(store,directory);let now=Date.parse('2026-11-07T04:00:00Z'),calls=0;
  const p={enabled:true,images:true,stickers:true,personaId:'default',memeAutoCollect:true,memeBackground:true},bytes=await sharp(Buffer.from('<svg width="80" height="80"><rect width="80" height="80" fill="white"/><circle cx="40" cy="40" r="20" fill="blue"/></svg>')).png().toBuffer();

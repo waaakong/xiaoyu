@@ -13,7 +13,8 @@
     "doctor": "node src/doctor.js",
     "test": "node --test test/*.test.js",
     "start:web": "node src/gui.js",
-    "package:windows": "node scripts/prepare-electron.mjs && electron-builder --config electron-builder.config.cjs --win nsis --x64",
+    "protocols:fetch": "node scripts/fetch-protocols.mjs",
+    "package:windows": "node scripts/fetch-protocols.mjs && node scripts/prepare-electron.mjs && electron-builder --config electron-builder.config.cjs --win nsis --x64",
     "start:legacy": "node src/desktop-launch.js"
   },
   "dependencies": {

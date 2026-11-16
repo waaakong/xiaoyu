@@ -1,0 +1,13 @@
+// Offline build only. This script never opens or loads into a running process.
+import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+const core=fs.readFileSync('C:/Program Files/Tencent/Weixin/4.2.0.13/Weixin.dll'),expected='afe3d02c58bada3c35009c0cd58ee1f57b2a00fe53237d0dce649107fddb9a20';if(hash(core)!==expected)throw Error('Exact Weixin build mismatch');
+const pe=core.readUInt32LE(60),optional=pe+24,section=optional+core.readUInt16LE(pe+20),sections=Array.from({length:core.readUInt16LE(pe+6)},(_,i)=>{const a=section+i*40;return {size:core.readUInt32LE(a+8),rva:core.readUInt32LE(a+12),offset:core.readUInt32LE(a+20)};});
+const bytes=(rva,n)=>{const s=sections.find(s=>rva>=s.rva&&rva+n<=s.rva+s.size);if(!s)throw Error('RVA out of range');return core.subarray(s.offset+rva-s.rva,s.offset+rva-s.rva+n);};
+const out=path.join(root,'data/wechat-comments-research/build-probe');fs.mkdirSync(out,{recursive:true});
+const points=[0x315a420,0x315a5f0,0x10acb00,0x7b3e70,0x115010,0x7b3eb0,0x76a750c,0x6abe50,0x577a670,0x57ad6b0];
+const header='#define XY_IMAGE_SIZE '+core.readUInt32LE(optional+56)+'\nstatic const struct {unsigned rva;unsigned char bytes[32];} checks[]={\n'+points.map(r=>' {'+r+',{'+[...bytes(r,32)].join(',')+'}},').join('\n')+'\n};\n';fs.writeFileSync(path.join(out,'profile.h'),header);
+const compiler=process.argv[2]??path.join(root,'data/native-toolchain/zig-x86_64-windows-0.15.2/zig.exe'),source=path.join(root,'integrations/wechat/comment-native/comment-probe.c'),dll=path.join(out,'XiaoyuWechatCommentProbe.dll');
+const temp=path.join(out,'tmp');fs.mkdirSync(temp,{recursive:true});
+const result=spawnSync(compiler,['cc','-shared','-O2','-Wall','-Wextra','-target','x86_64-windows-gnu','-I',out,source,'-o',dll],{encoding:'utf8',windowsHide:true,env:{...process.env,TEMP:temp,TMP:temp,TMPDIR:temp,ZIG_GLOBAL_CACHE_DIR:path.join(out,'cache'),ZIG_LOCAL_CACHE_DIR:path.join(out,'local-cache')}});if(result.status!==0)throw Error(result.stderr||'Compile failed');
+const manifest={schema:1,status:'offline-built-not-loaded',coreSha256:expected,sourceSha256:hash(fs.readFileSync(source)),dllSha256:hash(fs.readFileSync(dll)),dllPath:dll,network:false,dispatch:false,hooks:false,loadsAutomatically:false,purpose:'Exact-build native comment constructor/parser/destructor probe only; no comments can be sent'};fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2));console.log(JSON.stringify(manifest));

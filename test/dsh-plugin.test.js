@@ -50,11 +50,24 @@ test('natural multiline chat survives broken optional memory metadata with one m
   const log=fs.readFileSync(path.join(f.directory,'dsh-requests','qq-latest.json'),'utf8');assert.equal(log.includes('PRIVATE_REPLY'),false);assert.match(log,/DSH_METADATA_FORMAT_IGNORED/);
 });
 
-test('incomplete or empty model output is rejected instead of delivering a partial answer',async t=>{
-  for(const [output,kind]of [['partial answer','length'],['','stop']]){
-    const f=await fixture(t,{async *stream(){yield {type:'block-end',index:0,block:{type:'text',text:output}};yield {type:'finish',reason:{kind}};}});
-    const r=await fetch(f.url+'/chat',{method:'POST',headers:f.headers,body:JSON.stringify(f.payload)});assert.equal(r.status,400);
-  }
+test('truncated output is continued automatically instead of rejected',async t=>{
+  let calls=0;const f=await fixture(t,{async *stream(){calls++;if(calls===1){yield {type:'block-end',index:0,block:{type:'text',text:'前半句'}};yield {type:'finish',reason:{kind:'max-tokens'}};}else{yield {type:'block-end',index:0,block:{type:'text',text:'后半句'}};yield {type:'finish',reason:{kind:'stop'}};}}});
+  const r=await fetch(f.url+'/chat',{method:'POST',headers:f.headers,body:JSON.stringify(f.payload)}),d=await r.json();assert.equal(r.status,200,JSON.stringify(d));assert.equal(d.reply,'前半句后半句');assert.equal(calls,2);assert.deepEqual(d.format.warnings,[]);
+});
+
+test('a trailing continue marker triggers a follow-up round and is stripped',async t=>{
+  let calls=0;const f=await fixture(t,{async *stream(){calls++;if(calls===1){yield {type:'block-end',index:0,block:{type:'text',text:'第一段\n【继续】'}};yield {type:'finish',reason:{kind:'stop'}};}else{yield {type:'block-end',index:0,block:{type:'text',text:'第二段'}};yield {type:'finish',reason:{kind:'stop'}};}}});
+  const r=await fetch(f.url+'/chat',{method:'POST',headers:f.headers,body:JSON.stringify(f.payload)}),d=await r.json();assert.equal(r.status,200,JSON.stringify(d));assert.equal(d.reply,'第一段\n第二段');assert.equal(calls,2);assert.deepEqual(d.format.warnings,[]);
+});
+
+test('continuation is bounded and capped output is still delivered',async t=>{
+  let calls=0;const f=await fixture(t,{async *stream(){calls++;yield {type:'block-end',index:0,block:{type:'text',text:'片段'}};yield {type:'finish',reason:{kind:'length'}};}});
+  const r=await fetch(f.url+'/chat',{method:'POST',headers:f.headers,body:JSON.stringify(f.payload)}),d=await r.json();assert.equal(r.status,200,JSON.stringify(d));assert.equal(calls,4);assert.equal(d.reply,'片段片段片段片段');assert.ok(d.format.warnings.includes('DSH_CONTINUATION_CAPPED'));
+});
+
+test('empty model output is still rejected instead of delivering nothing',async t=>{
+  const f=await fixture(t,{async *stream(){yield {type:'block-end',index:0,block:{type:'text',text:''}};yield {type:'finish',reason:{kind:'stop'}};}});
+  const r=await fetch(f.url+'/chat',{method:'POST',headers:f.headers,body:JSON.stringify(f.payload)});assert.equal(r.status,400);
 });
 
 test('valid trailing memory block survives the full plugin path and retains evidence checks',async t=>{

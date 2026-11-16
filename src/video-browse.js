@@ -21,6 +21,18 @@ export class VideoBrowse {
  save(j){this.db.prepare('UPDATE video_browse_jobs SET data=?,updated=? WHERE id=?').run(JSON.stringify(j),this.now(),j.id);}
  get(id){const r=this.db.prepare('SELECT data FROM video_browse_jobs WHERE id=?').get(id);if(!r)throw Error('视频任务不存在');return JSON.parse(r.data);}
  state(){return {settings:this.settings(),active:this.active?this.get(this.active.job.id):null,jobs:this.db.prepare('SELECT data FROM video_browse_jobs ORDER BY updated DESC LIMIT 20').all().map(r=>JSON.parse(r.data))};}
+ context({scope='',personaId,limit=5,days=7}={}){
+  const c=this.video.settings();personaId??=c.personaId;if(!personaId)return '';
+  const n=Number.isInteger(limit)?Math.max(1,Math.min(5,limit)):3,d=Number.isFinite(days)?Math.max(1,Math.min(30,days)):7,since=this.now()-d*86400000;
+  const rows=this.db.prepare("SELECT platform,title,summary,observation,created FROM video_items WHERE status='analysed' AND summary<>'' AND created>=? AND (scope='' OR (scope=? AND personaId=?)) ORDER BY created DESC LIMIT ?").all(since,scope||'',personaId,n);
+  if(!rows.length)return '';
+  const label=p=>p==='douyin'?'抖音':p==='bilibili'?'B站':String(p||'视频');
+  const titleOf=t=>{const chars=Array.from(String(t||'未记录标题').trim());return chars.length>48?chars.slice(0,48).join('')+'…':chars.join('');};
+  const summaryOf=s=>{const raw=String(s??'').replace(/\s+/gu,' ').trim(),first=raw.split(/\s*(?:uncertainty|topic)\s*[：:]/iu)[0].replace(/^summary\s*[：:]\s*/iu,'').trim(),chars=Array.from(first);return chars.length>150?chars.slice(0,150).join('')+'…':chars.join('');};
+  const when=ms=>{const parts=Object.fromEntries(new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(ms)).map(x=>[x.type,x.value]));return parts.month+'-'+parts.day+' '+parts.hour+':'+parts.minute;};
+  const lines=rows.map(row=>{let watched=0;try{watched=Math.max(0,Number(JSON.parse(row.observation)?.watchedSeconds)||0);}catch{}const summary=summaryOf(row.summary);return '- '+when(row.created)+' · '+label(row.platform)+' · '+titleOf(row.title)+'：'+summary+(watched>=1?'（实际播放采样 '+Math.round(watched)+' 秒）':'');});
+  return '\n\n### 最近看过的视频\n下面是你自己最近在本机实际播放并采样理解过的视频，可以自然提起看过的内容；只能依据这些记录，不要说看过完整视频，也不要声称点赞、评论或关注。\n'+lines.join('\n');
+ }
  domain(){return this.runtime.accounts?.domain()??this.runtime.platform+':'+(this.runtime.accountId??this.runtime.account??this.runtime.store.meta('lastAccount')??'local');}
  paused(scope,creator){return !!scope&&!!creator&&this.runtime.store.isPaused(scope.includes(':group:')?scope+':member:'+creator:scope);}
  modelFor(p,engine){return p.model??(engine==='dsh'?this.runtime.engines.config?.model:this.runtime.engines.client?.(engine)?.config?.model??this.runtime.configuration().model)??null;}

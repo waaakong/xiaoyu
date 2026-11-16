@@ -1,0 +1,194 @@
+{
+ "revision": "b6b55fef1e8636b540a6d016a4729ca8cdf2e60b",
+ "attribution": "Twemoji graphics by Twitter, Inc. and other contributors; CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Adaptation: 37-mood selection/renaming for xiaoyu-emoji-expanded@1. Source: https://github.com/jdecked/twemoji/tree/b6b55fef1e8636b540a6d016a4729ca8cdf2e60b",
+ "license": "CC-BY-4.0",
+ "licensePath": "LICENSE-GRAPHICS",
+ "licenseGitSha": "dc8853a70cfa9d7e8933c080caa147815c659fab",
+ "files": [
+  {
+   "key": "smug",
+   "path": "assets/72x72/1f624.png",
+   "gitSha": "6847184123aa59f16676b9639ebd1c455050ebb2"
+  },
+  {
+   "key": "relaxed",
+   "path": "assets/72x72/1f60c.png",
+   "gitSha": "4fb75cffec78234062bdef448f735e486b3e497b"
+  },
+  {
+   "key": "upside",
+   "path": "assets/72x72/1f643.png",
+   "gitSha": "6c5f72b5ff5e8d5c44794bb48a79af7ca02bcd4f"
+  },
+  {
+   "key": "grimace",
+   "path": "assets/72x72/1f62c.png",
+   "gitSha": "24619b8a60b6d32e4f9a3b633aa25ca7088b8d8b"
+  },
+  {
+   "key": "mindblown",
+   "path": "assets/72x72/1f92f.png",
+   "gitSha": "a6ea47ee3f6c4d58c513fcf3138fc8dd1b2af74b"
+  },
+  {
+   "key": "party",
+   "path": "assets/72x72/1f973.png",
+   "gitSha": "cf02521cccc06f53fd3b77329baaace4f406abe7"
+  },
+  {
+   "key": "heart-eyes",
+   "path": "assets/72x72/1f60d.png",
+   "gitSha": "0d4f15ee1b4a64ba353360de785c5a60c05d2b7f"
+  },
+  {
+   "key": "kiss",
+   "path": "assets/72x72/1f618.png",
+   "gitSha": "7aa39d71dbca065faa0b3550cd12c4e9ccd6cb2c"
+  },
+  {
+   "key": "drool",
+   "path": "assets/72x72/1f924.png",
+   "gitSha": "47733cd9f294fa2f494906e1a35438313848c9b5"
+  },
+  {
+   "key": "yawn",
+   "path": "assets/72x72/1f971.png",
+   "gitSha": "8c12578bf680e634011a3ab095c6da50e969e18d"
+  },
+  {
+   "key": "sleepy",
+   "path": "assets/72x72/1f62a.png",
+   "gitSha": "1a0d7d5767af06b3b002bb4a5fc17901aeb8232e"
+  },
+  {
+   "key": "dizzy",
+   "path": "assets/72x72/1f635.png",
+   "gitSha": "3db251c49c66e62b6d7228518b65e74fcd69f34e"
+  },
+  {
+   "key": "nauseated",
+   "path": "assets/72x72/1f922.png",
+   "gitSha": "726e07a71017f20db0e11ff60e96bce5d992b042"
+  },
+  {
+   "key": "sneeze",
+   "path": "assets/72x72/1f927.png",
+   "gitSha": "c5b524ec6c1763cfa8cf01efb4386a52aff0ea3e"
+  },
+  {
+   "key": "cold",
+   "path": "assets/72x72/1f976.png",
+   "gitSha": "6d14820c56f93729bdd8e82f70d45a49be070831"
+  },
+  {
+   "key": "hot",
+   "path": "assets/72x72/1f975.png",
+   "gitSha": "2ed695a3621f0b5704c0dbfcb1e14fa2aac19b7e"
+  },
+  {
+   "key": "melting",
+   "path": "assets/72x72/1fae0.png",
+   "gitSha": "b22f9f4ce14909bfcc4a8f76a053a9c524b82aae"
+  },
+  {
+   "key": "disguised",
+   "path": "assets/72x72/1fae5.png",
+   "gitSha": "e0444c480ec93a8488cc64f5dd7160a99cc050f0"
+  },
+  {
+   "key": "salute",
+   "path": "assets/72x72/1fae1.png",
+   "gitSha": "16d636271d028d0e47c0da66bb7a098203ca3970"
+  },
+  {
+   "key": "handshake",
+   "path": "assets/72x72/1f91d.png",
+   "gitSha": "c1cc9d069d40509eb656bf7152ba839ace1f8f8f"
+  },
+  {
+   "key": "victory",
+   "path": "assets/72x72/270c.png",
+   "gitSha": "5734f34918c656e4f14b2fd817adefd0083e3c91"
+  },
+  {
+   "key": "wave",
+   "path": "assets/72x72/1f44b.png",
+   "gitSha": "250e857fb77ac0e0ec91a2c8e32c04a6bdb013dc"
+  },
+  {
+   "key": "call-me",
+   "path": "assets/72x72/1f919.png",
+   "gitSha": "6a4dcb42deddff5492fac1421914620cd0416fc1"
+  },
+  {
+   "key": "finger-heart",
+   "path": "assets/72x72/1faf0.png",
+   "gitSha": "1a4ebedf2e7645ea835f6744e50330de2ba2b769"
+  },
+  {
+   "key": "broken-heart",
+   "path": "assets/72x72/1f494.png",
+   "gitSha": "5af54e5f15770acbd38c43cf5d7b6f292cf61734"
+  },
+  {
+   "key": "anger",
+   "path": "assets/72x72/1f4a2.png",
+   "gitSha": "0630d37eca7a3a12f924b6dfe7cc5be43dfd37ca"
+  },
+  {
+   "key": "sweat-drops",
+   "path": "assets/72x72/1f4a6.png",
+   "gitSha": "6bec97d0c09522ff1518267542cf3042f44c1609"
+  },
+  {
+   "key": "music",
+   "path": "assets/72x72/1f3b5.png",
+   "gitSha": "dde36d4f9858238ed470c7ee7277f34491eeac8c"
+  },
+  {
+   "key": "coffee",
+   "path": "assets/72x72/2615.png",
+   "gitSha": "5ce8931e1dec0a4c2f61d9fca1f840bb2b5b070b"
+  },
+  {
+   "key": "noodles",
+   "path": "assets/72x72/1f35c.png",
+   "gitSha": "cc6233e3360b7d8e1f7c722377b1dbdaf003969c"
+  },
+  {
+   "key": "moon",
+   "path": "assets/72x72/1f319.png",
+   "gitSha": "51c101ff962c396d72a313eedb2d34e956ad0600"
+  },
+  {
+   "key": "sun",
+   "path": "assets/72x72/2600.png",
+   "gitSha": "718b31db31a4dd03f9dfbef80972739a2a895cc0"
+  },
+  {
+   "key": "star",
+   "path": "assets/72x72/2b50.png",
+   "gitSha": "0590867e07d280efd88fa738394a1b169c39cf2a"
+  },
+  {
+   "key": "fire",
+   "path": "assets/72x72/1f525.png",
+   "gitSha": "717523f17e6806ed6d97b065d625ab36f7e8182d"
+  },
+  {
+   "key": "zzz",
+   "path": "assets/72x72/1f4a4.png",
+   "gitSha": "0b3671fb5e091be0855278912e509985d724f8ab"
+  },
+  {
+   "key": "check",
+   "path": "assets/72x72/2705.png",
+   "gitSha": "0683c7ecf12acf3975e46da7e92a7be1ed6d71cc"
+  },
+  {
+   "key": "cross",
+   "path": "assets/72x72/274c.png",
+   "gitSha": "8347c7bad5ba3a8bb398a6a2b2822670a6e54ed7"
+  }
+ ]
+}

@@ -1,3 +1,4 @@
+import {connectionChips} from './connection-status.js';
 import {wrapActions} from './layout.js';
 import {animateSubview} from './page-navigation.js';
 import {workspacePages, applyPageIntroduction} from './workspace-copy.js';
@@ -5,8 +6,20 @@ import {installWorkspaceMotion} from './workspace-motion.js';
 // Reorganize existing controls without replacing their handlers or form state.
 export function installShell({node,button,notice,showPage,getSettings}){
   const $=id=>document.getElementById(id),main=$('workspace'),aside=document.querySelector('.shell>aside'),nav=aside.querySelector('nav');
+  const platform=sessionStorage.getItem('xyPlatform')??'qq',platformHidden=platform==='wechat'?new Set(['qzone','integrations']):new Set(['wechatConnection','moments']);
   const icon=id=>{const e=node('span');e.innerHTML=`<svg class="icon" aria-hidden="true"><use href="/icons.svg#${id}"></use></svg>`;return e.firstChild;};
-  const open=id=>document.querySelector(`nav [data-page="${id}"]`)?.click();
+  document.title='小鱼 · '+(platform==='wechat'?'微信':'QQ')+'工作台';
+  const open=async id=>{
+    const targetPlatform=id==='integrations'?'qq':id==='wechatConnection'?'wechat':platform;
+    if(targetPlatform!==platform){
+      if($('unsavedIndicator')?.hidden===false){notice('请先保存当前草稿',true);return;}
+      sessionStorage.setItem('xyOpenPage',id);
+      const picker=nav.querySelector('label select');picker.value=targetPlatform;
+      const result=await picker.onchange();if(result==='failed'||result==='setup')sessionStorage.removeItem('xyOpenPage');
+      return;
+    }
+    return document.querySelector(`nav [data-page="${id}"]`)?.click();
+  };
   const header=main.querySelector('header'),strip=node('div','connection-strip');strip.setAttribute('aria-label','平台与模型连接状态');header.after(strip);
   const dshStatus=button('DSH 检测中',()=>open('engines'),'status-chip');dshStatus.id='headerDsh';dshStatus.title='查看DSH连接、模型与额度';dshStatus.dataset.online='false';
   for(const id of ['headerQq','headerWechat','headerCodex'])if($(id))strip.append($(id));strip.append(dshStatus);if($('headerPlugins'))strip.append($('headerPlugins'));
@@ -68,7 +81,7 @@ export function installShell({node,button,notice,showPage,getSettings}){
   new MutationObserver(records=>{for(const r of records)for(const e of r.addedNodes)if(e.nodeType===1&&e.classList.contains('page'))scroller.append(e);}).observe(main,{childList:true});
   const originalButtons=new Map([...nav.querySelectorAll('[data-page]')].map(b=>[b.dataset.page,b]));
   nav.replaceChildren();nav.setAttribute('aria-label','主导航');
-  const group=(title,ids)=>{nav.append(node('div','nav-group',title));for(const id of ids){const b=originalButtons.get(id);if(b)nav.append(b);}};
+  const group=(title,ids)=>{nav.append(node('div','nav-group',title));for(const id of ids){if(platformHidden.has(id))continue;const b=originalButtons.get(id);if(b)nav.append(b);}};
   group('陪伴空间',['overview','chats','personas','assets','proactive','companion','life','video']);
   const memory=node('details','memory-navigation'),summary=node('summary');summary.append(icon('cognition'),node('span','nav-label','记忆与成长'));summary.setAttribute('aria-label','记忆与成长');summary.title='记忆与成长';memory.append(summary);for(const id of ['cognition','starMap','memories','people','notebook','diary','knowledge','continuity','learning','recall'])if(originalButtons.has(id))memory.append(originalButtons.get(id));nav.append(memory);
   group('社交与分享',['qzone','moments']);
@@ -161,13 +174,12 @@ export function installShell({node,button,notice,showPage,getSettings}){
   const settingButtons=[];for(const [i,[name,p]]of settingPages.entries()){settingsBody.append(p);p.hidden=i!==0;const b=button(name,()=>{for(const [,s]of settingPages)s.hidden=s!==p;settingButtons.forEach(t=>t.classList.toggle('active',t===b));animateSubview(p);},'quiet');b.classList.toggle('active',i===0);settingButtons.push(b);tabs.append(b);}settingsLayout.append(tabs,settingsBody);form.prepend(settingsLayout);
   wrapActions(document.body);
   let recentKey='';
-  function paint(state){const c=state.connections;if(!c)return;const w=c.wechat,q=c.qq;const pluginsConnected=!!q.integrations?.plugins?.gateway?.connected;$('headerPlugins').textContent=pluginsConnected?'插件 已连接':'插件 未连接';$('headerPlugins').dataset.online=String(pluginsConnected);
+  function paint(state){const c=state.connections;if(!c)return;const w=c.wechat,q=c.qq;for(const chip of connectionChips(c,platform)){
+      const element=$(chip.id);if(!element)continue;element.hidden=false;element.textContent=chip.label;element.dataset.online=String(chip.online);element.title=chip.detail;element.setAttribute('aria-label',chip.label+'，'+chip.detail);element.onclick=()=>open(chip.page);
+    }
     aside.querySelector('.tiny-dot').dataset.online=String(!!q.connected||!!w.connected);
     for(const [key,data]of [['qq',q],['wechat',w]]){const online=data.connected;channelFields[key].status.textContent=online?'已连接':data.running?'等待连接':'未启动';channelFields[key].status.dataset.online=String(online);channelFields[key].hint.textContent=key==='qq'?(q.integrations?.protocol.name??'QQ协议端')+' · 只回复已授权聊天':(w.mode==='foreground'?'前台发送':'原生发送')+' · 独立记忆';}
-    for(const [id,data,label]of [['headerQq',q,'QQ'],['headerWechat',w,'微信']])if($(id)){$(id).textContent=label+' '+(data.connected?'在线':data.running?'待连接':'未启动');$(id).dataset.online=String(data.connected);}
-    $('headerQq').onclick=()=>open('integrations');$('headerWechat').onclick=()=>open('wechatConnection');
     const e=c.engines,d=getSettings()?.config.defaults?.engine??e?.defaultEngine??'codex';
-    for(const [id,label,online]of [['headerCodex','Codex',!!c.codex?.connected],['headerDsh','DSH',!!e?.dsh?.connected]]){const chip=$(id);chip.textContent=label+' '+(online?'已连接':'未连接');chip.dataset.online=String(online);chip.onclick=()=>open('engines');chip.title=`${label}连接、模型与额度${d===label.toLowerCase()?' · 当前平台默认引擎':''}${label==='DSH'&&e?.dsh?.error?' · '+e.dsh.error:''}`;}
     engineSummaries.replaceChildren();for(const id of ['codex','dsh']){const online=id==='dsh'?e?.dsh?.connected:c.codex?.connected,summary=node('div','workspace-engine-summary'),badge=node('span','engine-state',online?'已连接':'未连接');badge.dataset.online=String(!!online);summary.append(node('h3','',id==='dsh'?'DSH':'Codex'),badge);const snapshot=e?.quota?.snapshots?.find(q=>q.engine===id);if(snapshot?.status==='ready'&&snapshot.windows?.some(w=>Number.isFinite(w.usedPercent))){const remaining=Math.min(...snapshot.windows.filter(w=>Number.isFinite(w.usedPercent)).map(w=>Math.max(0,100-w.usedPercent)));summary.append(node('p','',remaining+'% 最低剩余额度'));}else if(snapshot?.status==='ready'&&snapshot.wallets?.length){for(const wallet of snapshot.wallets)summary.append(node('p','',(wallet.kind==='bonus'?'赠送 ':'充值 ')+wallet.balance+' '+wallet.currency));}else summary.append(node('p','footnote',snapshot?.status==='stale'?'额度已过期':snapshot?.status==='unsupported'?'当前路由不支持额度查询':'额度尚未读取'));summary.append(node('p','footnote',id===d?'当前平台默认':'可按聊天选择'));engineSummaries.append(summary);}updated.textContent='刷新于 '+new Date(c.at).toLocaleTimeString('zh-CN',{hour12:false});
     const key=JSON.stringify(c.recent);if(key!==recentKey){recentKey=key;recentRows.replaceChildren();for(const item of c.recent){const row=node('div','workspace-activity'),status=({delivered:'已送达',unknown:'未确认',cancelled:'已取消',failed:'失败'})[item.status]??item.status??'已记录',total=item.timing.totalMs,label=item.platform==='wechat'?'微信':'QQ';row.append(node('time','',new Date(item.created.replace(' ','T')+'Z').toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'})),node('span','platform-label',label),node('div','activity-caption',`${status} · ${item.model??item.engine??'模型'}`),node('span','footnote',Number.isFinite(total)?(total/1000).toFixed(1)+' 秒':''));const detail=node('small','activity-timing');const parts=[['生成',item.timing.generationMs],['投递',item.timing.deliveryMs],['排队',item.timing.queueMs]].filter(([,v])=>Number.isFinite(v));detail.textContent=parts.map(([k,v])=>k+' '+(v/1000).toFixed(1)+' 秒').join(' · ');row.querySelector('.activity-caption').append(detail);recentRows.append(row);}if(!c.recent.length)recentRows.append(node('p','empty','还没有回复记录。连接后，只处理已授权的新消息。'));}
   }

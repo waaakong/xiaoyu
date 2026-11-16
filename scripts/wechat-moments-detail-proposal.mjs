@@ -1,0 +1,26 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+import {momentsDetailPacket,MOMENTS_CORE_SHA,sha256} from '../src/wechat-moments-protocol.js';
+
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const args=process.argv.slice(2);
+const value=name=>{const i=args.indexOf('--'+name);return i>=0?args[i+1]:undefined;};
+const objectId=value('object-id');
+if(!/^[1-9][0-9]{0,19}$/.test(objectId||''))throw Error('用法：node scripts/wechat-moments-detail-proposal.mjs --object-id <64位以内对象ID> [--account wxid_...] [--request-id UUID]');
+const config=JSON.parse(fs.readFileSync(path.join(root,'data/wechat-connection.json'),'utf8'));
+const account=value('account')||config.account;
+const manifest=JSON.parse(fs.readFileSync(path.join(root,'data/wechat-moments-research/build/manifest.json'),'utf8'));
+if(manifest.coreSha256!==MOMENTS_CORE_SHA||manifest.offlineTest!==false||manifest.objectDetailCandidate!==true)throw Error('朋友圈组件清单不满足只读详情的固定条件');
+const dll=path.join(root,'data/wechat-moments-research/build/XiaoyuWechatMoments.dll');
+if(sha256(fs.readFileSync(dll))!==manifest.dllSha256)throw Error('朋友圈组件与清单不一致，请重新构建');
+const requestId=value('request-id')||crypto.randomUUID();
+const packet=momentsDetailPacket({account,objectId,requestId});
+const id=crypto.randomUUID(),hash=sha256(packet.packet),dir=path.join(root,'data/wechat-moments-research/proposals');
+fs.mkdirSync(dir,{recursive:true});
+const packetFile=path.join(dir,id+'.bin'),file=path.join(dir,id+'.json');
+fs.writeFileSync(packetFile,packet.packet,{mode:0o600});
+const proposal={schema:1,id,account,objectId,requestId,kind:'detail',packetSha256:hash,packetFile,coreSha256:MOMENTS_CORE_SHA,created:Date.now(),notice:'只读核对指定朋友圈对象；不发布、点赞、评论或删除。'};
+fs.writeFileSync(file,JSON.stringify(proposal,null,2),{mode:0o600});
+console.log(JSON.stringify({proposalId:id,proposalFile:file,packetFile,packetSha256:hash,dllSha256:manifest.dllSha256,objectId,account},null,2));

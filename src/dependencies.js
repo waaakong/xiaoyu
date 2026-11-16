@@ -10,11 +10,14 @@ import {speechInstalled} from './speech-assets.js';
 import {edgeExecutable} from './video-browser.js';
 
 const exists=fs.existsSync;
+const GROUPS={runtime:'本机运行环境',chat:'聊天连接',optional:'可选能力'};
+const ACTIONS={python:'install-basic',astrbot:'install-basic',speech:'install-speech',qzone:'install-qzone',qq:'page:integrations',snowluma:'page:integrations',napcat:'page:integrations',codex:'page:models',voice:'page:models'};
+const GROUP_OF={node:'runtime',webview2:'runtime',dotnet:'runtime',python:'runtime',astrbot:'runtime',qq:'chat',snowluma:'chat',napcat:'chat',codex:'chat',speech:'optional',edge:'optional',qzone:'optional',voice:'optional'};
 export class DependencyCenter {
   constructor(dataDir,{projectRoot,canInstall=()=>true,getToken=()=>'',external=()=>({}),adopt=()=>{},runner=runDependencyProcess,fetcher=fetch,uvAsset=UV,platform=process.platform,arch=process.arch,ports={dashboard:6185,gateway:6199}}={}){
     this.base=path.resolve(dataDir);this.project=projectRoot??path.resolve(import.meta.dirname,'..');Object.assign(this,{canInstall,getToken,external,adopt,runner,fetcher,uvAsset,platform,arch,ports});this.directory=path.join(this.base,'dependencies');this.python=path.join(this.base,'astrbot-env','Scripts','python.exe');this.bot=path.join(this.base,'astrbot');this.job=null;this.work=null;this.report=null;this.scanning=null;
   }
-  state(){return {items:this.report?.items??[],checkedAt:this.report?.checkedAt??null,index:this.index(),job:this.job?{...this.job,log:this.job.log.slice(-12)}:null,credentialsFile:exists(path.join(this.base,'astrbot-initial-login.txt'))?path.join(this.base,'astrbot-initial-login.txt'):null};}
+  state(){return {items:this.report?.items??[],summary:this.report?.summary??null,checkedAt:this.report?.checkedAt??null,index:this.index(),job:this.job?{...this.job,log:this.job.log.slice(-12)}:null,credentialsFile:exists(path.join(this.base,'astrbot-initial-login.txt'))?path.join(this.base,'astrbot-initial-login.txt'):null};}
   index(){try{const c=JSON.parse(fs.readFileSync(path.join(this.directory,'settings.json'),'utf8'));return Object.hasOwn(INDEXES,c.index)?c.index:'official';}catch{return 'official';}}
   managedPath(target){const resolved=path.resolve(target),prefix=this.base+path.sep;if(!resolved.startsWith(prefix))throw Error('依赖路径超出小鱼数据目录');let parent=resolved;while(!exists(parent))parent=path.dirname(parent);if(fs.realpathSync(parent)!==fs.realpathSync(this.base)&&!fs.realpathSync(parent).startsWith(fs.realpathSync(this.base)+path.sep))throw Error('依赖目录不能通过链接指向外部');return resolved;}
   async inspectPython(file){if(!exists(file))return null;try{const result=await this.runner(file,['-I','-c','import sys,json,importlib.metadata as m; print(json.dumps({"python":".".join(map(str,sys.version_info[:3])),"astrbot":next((d.version for d in m.distributions() if d.metadata["Name"].lower()=="astrbot"),None)}))'],{timeoutMs:15000});return JSON.parse(result.trim());}catch{return null;}}
@@ -30,18 +33,20 @@ export class DependencyCenter {
       system.qq=[process.env.ProgramW6432,process.env.ProgramFiles,'C:/Program Files'].filter(Boolean).some(dir=>exists(path.join(dir,'Tencent','QQNT','QQ.exe'))||exists(path.join(dir,'Tencent','QQ','QQ.exe')));
     }
     const env=await this.inspectPython(this.python),managed=env??await this.inspectPython(this.managedPython()??'');const external=this.external(),items=[];
-    const add=(id,name,ready,detail,version='',required=false)=>items.push({id,name,state:ready?'ready':'missing',detail,version,required,url:DEPENDENCY_LINKS[id]??null});
+    const add=(id,name,ready,detail,version='',required=false)=>items.push({id,name,state:ready?'ready':'missing',detail,version,required,group:GROUP_OF[id]??'optional',action:ACTIONS[id]??(DEPENDENCY_LINKS[id]?'download':null),url:DEPENDENCY_LINKS[id]??null});
     add('node','Node.js',Number(process.versions.node.split('.')[0])>=24,'便携包已携带，无需另装Node/npm',process.version,true);
     add('webview2','WebView2 Runtime',!!system.webview,system.webview?'桌面运行时已检测到':'缺少时可通过启动器下载微软安装器',system.webview??'',true);
     add('dotnet','.NET Framework 4.8',system.dotnet===true,'桌面启动器所需的Windows运行环境','',true);
-    add('python','独立 Python 3.12',!!managed?.python?.startsWith('3.12.'),'基础依赖将在小鱼数据目录内准备',managed?.python??'');
-    add('astrbot','AstrBot 插件环境',env?.astrbot===ASTRBOT_VERSION&&exists(path.join(this.bot,'data','cmd_config.json')),env?.astrbot&&env.astrbot!==ASTRBOT_VERSION?'已安装其他版本，不会自动替换':'聊天插件可选；准备后继续使用原有插件管理',env?.astrbot??'');
+    add('python','独立 Python 3.12',!!managed?.python?.startsWith('3.12.'),'基础依赖将在小鱼数据目录内准备',managed?.python??'',true);
+    add('astrbot','AstrBot 插件环境',env?.astrbot===ASTRBOT_VERSION&&exists(path.join(this.bot,'data','cmd_config.json')),env?.astrbot&&env.astrbot!==ASTRBOT_VERSION?'已安装其他版本，不会自动替换':'聊天插件可选；准备后继续使用原有插件管理',env?.astrbot??'',true);
     for(const [id,name]of [['snowluma','SnowLuma'],['napcat','NapCat Shell'],['qq','QQ'],['codex','Codex']])add(id,name,id==='qq'?!!system.qq:!!external[id],id==='snowluma'||id==='napcat'?'从官方获取原版后，在QQ接入页检测目录':'安装及登录使用官方流程');
     add('speech','本地语音识别 / SenseVoiceSmall',speechInstalled(this.base),'可选；独立CPU环境，约230MiB量化模型；不上传音频、不按次收费');
     add('edge','Microsoft Edge / 视频只读浏览',!!edgeExecutable(),'复用已安装的Edge，使用小鱼自己的浏览器资料目录；首次登录由用户处理');
     add('qzone','QQ空间图片/视频组件',exists(path.join(this.directory,'qzone-ready.json')),'复用独立Python；FFmpeg用于MP4封面，准备前请停止插件服务');
     add('voice','Breeze 官方语音',true,'云端合成无需本机模型；在语音与音色页配置Key，合成消耗官网额度');
-    this.report={checkedAt:new Date().toISOString(),items};return this.state();
+    const required=items.filter(i=>i.required),missing=required.filter(i=>i.state!=='ready');
+    const summary={total:items.length,ready:items.filter(i=>i.state==='ready').length,required:required.length,requiredReady:required.length-missing.length,missingRequired:missing.map(i=>i.id),groups:Object.fromEntries(Object.entries(GROUPS).map(([id,name])=>[id,{name,total:items.filter(i=>i.group===id).length,ready:items.filter(i=>i.group===id&&i.state==='ready').length}])),optionalReady:items.filter(i=>i.group==='optional'&&i.state==='ready').length,optionalTotal:items.filter(i=>i.group==='optional').length};
+    this.report={checkedAt:new Date().toISOString(),items,summary};return this.state();
   }
   install({index='official',component='basic'}={}){
     if(!['basic','speech','qzone'].includes(component))throw Error('依赖组件无效');

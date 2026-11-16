@@ -13,6 +13,15 @@ test('contact sync verifies account, keeps successful lists and preserves cache 
     r.onebot.action=async action=>{if(action==='get_login_info')return {user_id:99};throw new Error('offline');};await r.refreshContacts();assert.equal(r.contacts().items.length,2);
   }finally{r.onebot=null;await r.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('QQ version records normalize placeholders and trim real values',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'qq-runtime-version-test-')),r=new Runtime({store:new Store(':memory:'),dataDir:dir});
+  try{
+    r.integrationSave({name:'snowluma',qqVersion:'undefined'});
+    assert.equal(r.integrationState().protocol.qqVersion,'未记录');
+    r.integrationSave({name:'snowluma',qqVersion:'  4.2.0.13  '});
+    assert.equal(r.integrationState().protocol.qqVersion,'4.2.0.13');
+  }finally{await r.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('persona library and image library are usable without a cloud API',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'qq-library-test-'));const r=new Runtime({store:new Store(':memory:'),dataDir:dir});
   try{

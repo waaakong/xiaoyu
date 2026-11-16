@@ -22,12 +22,12 @@ export class PluginGateway {
     socket.on('error',()=>{});socket.on('close',()=>{if(this.socket===socket){this.cancel();this.log('AstrBot插件通道已断开，插件请求不自动重试。');}});
   }
   send(event){if(this.socket?.readyState!==WebSocket.OPEN)throw new Error('AstrBot插件环境未连接');this.socket.send(JSON.stringify(event));}
-  async enhance(r,{signal,model,onSent,prepareSend,assertFresh,bufferReply,timeoutMs=150000}={}){
+  async enhance(r,{signal,model,onSent,prepareSend,assertFresh,bufferReply,beforePacket,beforeSubmit,bubbleLimit,timeoutMs=150000}={}){
     if(this.socket?.readyState!==WebSocket.OPEN||!r.policy.enabled||!r.policy.pluginsEnabled||r.policy.pluginMode!=='enhanced')throw new Error('增强插件未连接或尚未授权');
     if(this.leases.get(r.scope)?.until>this.now())throw new Error('此聊天已有插件任务');
     signal?.throwIfAborted();const trace=crypto.randomUUID(),controller=new AbortController();
     return new Promise((resolve,reject)=>{
-      const lease={scope:r.scope,account:r.account,user:r.user,kind:r.group?'group':'private',peer:String(r.group??r.user),mode:'enhanced',voiceMode:r.policy.voiceMode,trace,until:this.now()+timeoutMs,sends:0,calls:0,modelBusy:false,model,onSent,prepareSend,assertFresh,bufferReply,signal:signal?AbortSignal.any([signal,controller.signal]):controller.signal,resolve,reject};
+      const lease={scope:r.scope,account:r.account,user:r.user,kind:r.group?'group':'private',peer:String(r.group??r.user),mode:'enhanced',voiceMode:r.policy.voiceMode,trace,until:this.now()+timeoutMs,sends:0,calls:0,modelBusy:false,model,onSent,prepareSend,assertFresh,bufferReply,beforePacket,beforeSubmit,bubbleLimit,signal:signal?AbortSignal.any([signal,controller.signal]):controller.signal,resolve,reject};
       lease.cleanup=()=>{clearTimeout(lease.timer);signal?.removeEventListener('abort',lease.abort);if(this.leases.get(r.scope)===lease)this.leases.delete(r.scope);};
       lease.fail=message=>{lease.cleanup();controller.abort();const error=new Error(message);error.sends=lease.sends;reject(error);};
       lease.abort=()=>lease.fail('增强请求已取消');lease.timer=setTimeout(()=>lease.fail('增强请求超时，未自动补发'),timeoutMs);signal?.addEventListener('abort',lease.abort,{once:true});
@@ -63,14 +63,14 @@ export class PluginGateway {
         const message=await this.message(p.message,l),pure=message.every(s=>s.type==='text'||s.type==='at'),speechText=message.filter(s=>s.type==='text').map(s=>s.data.text).join('');
         if(l.mode==='enhanced'&&pure&&responseDecision(speechText).kind!=='respond')return {suppressed:true,reason:'model-silence'};
         if(l.mode==='enhanced'&&l.bufferReply){if(this.policy(l.scope).voiceMode!==l.voiceMode)throw Error('只语音模式已改变');this.lease(kind,peer);l.bufferedPackets=(l.bufferedPackets??0)+1;l.bufferReply(message);return {buffered:true,delivered:false};}
-        const parts=l.mode==='enhanced'&&pure?chatParts(speechText,{maxParts:this.policy(l.scope).maxBubbles??2}):[speechText];
+        const parts=l.mode==='enhanced'&&pure?chatParts(speechText,{maxParts:Math.min(this.policy(l.scope).maxBubbles??2,l.bubbleLimit??3)}):[speechText];
         const split=parts.length>1&&parts.length<=3-l.sends;
         const packets=split?parts.map((text,index)=>[...(index===0?message.filter(s=>s.type==='at'):[]),{type:'text',data:{text}}]):[message];
         let first;
-        for(let packet of packets){
+        for(let packet of packets){await l.beforePacket?.();
           if(this.lease(kind,peer)!==l||l.sends>=3)throw new Error('请求已变化或发送次数超限');l.sends++;
           let directed,mentionId;if(l.prepareSend&&packet.some(x=>x.type==='text')){directed=l.prepareSend(packet.filter(x=>x.type==='text').map(x=>x.data.text).join(''));packet=[{type:'text',data:{text:directed.text}},...packet.filter(x=>x.type!=='text'&&x.type!=='at')];mentionId=await this.onebot.prepareMention?.({message_type:kind,group_id:Number(peer),self_id:l.account},{mention:directed.target,beforeMention:directed.beforeMention,beforeSend:()=>this.lease(kind,peer)});if(directed.quote){directed.assertQuote?.();packet.unshift({type:'reply',data:{id:directed.quote.id}});}if(mentionId)packet.unshift({type:'at',data:{qq:mentionId}},{type:'text',data:{text:' '}});}
-          if(this.lease(kind,peer)!==l)throw Error('插件发送租约已变化');const result=await this.onebot.action(kind==='group'?'send_group_msg':'send_private_msg',{[kind==='group'?'group_id':'user_id']:Number(peer),message:packet});if(mentionId){result.mentionId=mentionId;directed.confirmed();}first??=result;
+          if(this.lease(kind,peer)!==l)throw Error('插件发送租约已变化');l.beforeSubmit?.();const result=await this.onebot.action(kind==='group'?'send_group_msg':'send_private_msg',{[kind==='group'?'group_id':'user_id']:Number(peer),message:packet});if(mentionId){result.mentionId=mentionId;directed.confirmed();}first??=result;
           this.lastResult={time:new Date(this.now()).toISOString(),scope:l.scope,status:'confirmed'};
           try{await (l.onSent??this.onSent)({scope:l.scope,message:packet,receipt:result,signal:l.signal,speechText});}catch{this.log('插件已投递，记录保存失败；不重发。');}
         }

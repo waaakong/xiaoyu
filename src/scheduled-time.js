@@ -7,7 +7,15 @@ export function nextClock(now,hour,minute,{dayOffset=0,weekday}={}){
   return base+dayOffset*86400000+(dayOffset===0&&base<=now?86400000:0);
 }
 export function parseLocalTime(value){if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value))throw Error('请提供明确的北京时间');const at=Date.parse(value.replace(' ','T')+':00+08:00');if(!Number.isFinite(at)||new Date(at+8*3600000).toISOString().slice(0,16).replace('T',' ')!==value)throw Error('日期或时刻不存在');return at;}
-export function taskIntent(text){return /^\/(?:定时|任务|取消任务|确认任务|暂停定时任务|继续定时任务)(?:\s|$)/u.test(text)||!/(?:他说|她说|有人说|举例|例如|如果|假如|听说|为什么)/u.test(text)&&/(?:后|明天|今天|今晚|每天|每周|下周|下星期|\d{4}[-年/]|\d{1,2}月|\d[:：]\d|[零一二两三四五六七八九十\d]+[点时])/u.test(text)&&/(?:提醒|叫我|找我|告诉我|发|说|@我)/u.test(text);}
+export function structuredSchedule(v,now=Date.now()){
+ if(!v||typeof v!=='object'||Array.isArray(v)||!['once','daily','weekly'].includes(v.repeat)||!['fixed','greeting','think'].includes(v.kind)||typeof v.time!=='string'||!/^\d{2}:\d{2}$/.test(v.time))throw Error('请选择任务类型、重复规则和北京时间');
+ const [hour,minute]=v.time.split(':').map(Number);if(hour>23||minute>59)throw Error('时刻无效');
+ let due;if(v.repeat==='once')due=parseLocalTime(String(v.date??'')+' '+v.time);else{const weekday=Number(v.weekday);if(v.repeat==='weekly'&&(!Number.isInteger(weekday)||weekday<0||weekday>6||v.weekday===''||v.weekday==null))throw Error('请选择每周星期');due=nextClock(now,hour,minute,v.repeat==='weekly'?{weekday}:{});}
+ const content=typeof v.content==='string'?v.content.trim():'';if(!content||content.length>1800||!Number.isSafeInteger(due)||due<=now||due>now+30*86400000)throw Error('请填写1—1800字内容和未来30天内的有效时间');
+ for(const key of ['voice','mentionSelf'])if(v[key]!==undefined&&typeof v[key]!=='boolean')throw Error('任务输出开关无效');
+ return {due,repeat:v.repeat,interval:v.repeat==='daily'?86400000:v.repeat==='weekly'?7*86400000:0,kind:['greeting','think'].includes(v.kind)?v.kind:'reminder',content,voice:v.voice===true,mentionSelf:v.mentionSelf===true};
+}
+export function taskIntent(text){return /^\/(?:定时|任务|取消任务|确认任务|暂停定时任务|继续定时任务)(?:\s|$)/u.test(text)||!/(?:他说|她说|有人说|举例|例如|如果|假如|听说|为什么)/u.test(text)&&/(?:后|明天|今天|今晚|每天|每周|下周|下星期|\d{4}[-年/]|\d{1,2}月|\d[:：]\d|[零一二两三四五六七八九十\d]+[点时])/u.test(text)&&/(?:提醒|叫我|找我|告诉我|发|说|聊|想|思考|@我|打(?:个)?招呼|问好|早安|晚安)/u.test(text);}
 export function parseScheduledRequest(text,now=Date.now()){
   if(/^[“"「『>]/u.test(String(text).trim())||/(?:你会|是否会|会不会).*(?:发|说)|(?:什么时候|几点).*(?:发|提醒)|(?:发|提醒).*(?:是什么意思|怎么实现|可行吗)/u.test(text))return {clarify:'这是讨论还是要建立定时任务？如需执行，请明确时间及提醒正文。'};
   let s=String(text).trim().replace(/^\/定时\s*/u,'').replace(/^(?:请|麻烦|帮我|能不能|可以)?\s*/u,'');
@@ -15,7 +23,7 @@ export function parseScheduledRequest(text,now=Date.now()){
   if(/发给|发送给|给.+?(?:发|提醒)|(?:到|向|在).{1,20}群/u.test(s.replace(/在本群|在群里|在当前群/gu,'')))return {clarify:'当前只支持本聊天提醒，请明确本聊天的提醒正文，不会跨聊天发送。'};
   if(/每(?:隔)?[零一二两三四五六七八九十\d]+(?:秒|分|小时)/u.test(s))return {clarify:'周期任务目前支持每天或每周一次，请明确一个北京时间和提醒正文。'};
   if(/下星期|本周|星期|\d{4}[-年/]|\d{1,2}月|下个月|月底/u.test(s))return {complex:true};
-  const style=/按(?:你的|当前)?人设|用(?:你的)?口吻/u.test(s),voice=/用语音|语音提醒|语音说/u.test(s),mention=/@我|艾特我/u.test(s);
+  const style=/按(?:你的|当前)?人设|用(?:你的)?口吻/u.test(s),voice=/用语音|语音提醒|语音说/u.test(s),mention=/@我|艾特我/u.test(s),think=/自己(?:想|思考|组织|发挥|说)|即兴|自由发挥|主动(?:发起|说|聊)|想说什么|说点什么/u.test(s);
   let due,interval=0,repeat='once',timePart='';
   const relative=/([零〇一二两三四五六七八九十\d]+|半)\s*(秒钟?|分钟?|小时|天)\s*(?:以)?后/u.exec(s);
   const daily=/每天\s*(?:(上午|下午|晚上|中午|凌晨)\s*)?([零一二两三四五六七八九十\d]+)(?:[:：点时])(?:\s*([零一二两三四五六七八九十\d]+|半)\s*分?)?/u.exec(s);
@@ -28,7 +36,9 @@ export function parseScheduledRequest(text,now=Date.now()){
   else if(daily){const t=clockTime(daily[1],daily[2],daily[3]);due=nextClock(now,t.hour,t.minute);repeat='daily';interval=86400000;timePart=daily[0];}
   else if(clock){const t=clockTime(clock[2]??(clock[1]==='今晚'?'晚上':null),clock[3],clock[4]);due=nextClock(now,t.hour,t.minute,{dayOffset:clock[1]==='明天'?1:clock[1]==='后天'?2:0,...(clock[1]?.startsWith('下周')?{weekday:'日一二三四五六'.indexOf(clock[1].slice(-1)==='天'?'日':clock[1].slice(-1))}: {})});if(['今天','今晚'].includes(clock[1])&&new Date(due+8*3600000).toISOString().slice(0,10)!==new Date(now+8*3600000).toISOString().slice(0,10))throw Error('今天这个时间已过，请指定未来时间');if(clock[1]?.startsWith('下周')){const d=new Date(now+8*3600000),currentDay=d.getUTCDay()||7,target='一二三四五六日'.indexOf(clock[1].slice(-1)==='天'?'日':clock[1].slice(-1))+1;const date=new Date(now+(7-currentDay+target)*86400000+8*3600000);due=Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate(),t.hour-8,t.minute);}repeat='once';timePart=clock[0];}
   if(!due)return {complex:true};
-  let content=s.replace(timePart,'').replace(/按(?:你的|当前)?人设|用(?:你的)?口吻|用语音|语音提醒|语音说|@我|艾特我/gu,'').replace(/^[\s,，。:：]*(?:在本群|在群里|在这里|在本聊天)?[\s,，:：]*(?:提醒我|告诉我|叫我|找我|提醒|发送|发一句|发|说一句|说)?[\s,，:：]*/u,'').trim();
+  let content=s.replace(timePart,'').replace(/按(?:你的|当前)?人设|用(?:你的)?口吻|用语音|语音提醒|语音说|@我|艾特我/gu,'').replace(/自己(?:想|思考|组织|发挥|说).{0,6}|即兴|自由发挥|主动(?:发起|说|聊)/gu,'').replace(/^[\s,，。:：]*(?:在本群|在群里|在这里|在本聊天)?[\s,，:：]*(?:提醒我|告诉我|叫我|找我|提醒|发送|发一句|发|说一句|说)?[\s,，:：]*/u,'').trim();
+  if(!think&&/打(?:个)?招呼|问好/u.test(s))return {due:Math.round(due),interval,repeat,content:content||"自然打个招呼",voice,mentionSelf:mention,style:false,kind:"greeting"};
+  if(think)return {due:Math.round(due),interval,repeat,content:'到点主动说点什么',voice,mentionSelf:mention,style,kind:'think'};
   if(!content&&mention)content='时间到啦';if(!content||/^(?:消息|一句话|个消息|一下|我|吗|么)$/u.test(content))return {clarify:'到时需要提醒什么？请把时间和具体内容写在同一条消息，例如“5分钟后提醒我喝水”。'};
   return {due:Math.round(due),interval,repeat,content,voice,mentionSelf:mention,style};
 }

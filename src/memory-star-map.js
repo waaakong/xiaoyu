@@ -5,6 +5,9 @@ const recordTypes=new Set(['fixed','fact','event','note','topic','plan']);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const stamp=value=>String(value??'').replace(' ','T').replace(/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)$/,'$1Z');
 const text=(value,max=180)=>String(value??'').slice(0,max);
+const ageDays=value=>{const time=Date.parse(stamp(value));return Number.isFinite(time)?Math.max(0,Math.floor((Date.now()-time)/86400000)):null;};
+const baseWeight={fixed:1.8,plan:1.35,event:1.15,fact:1,note:.85,topic:.8};
+const weightOf=n=>{const confirm=Math.min(1.6,1+Math.log2(1+Math.max(0,Number(n.confirmations??0)))*.35),sources=Math.min(1.25,1+(n.sources?.length??0)*.15),age=ageDays(n.created??n.updated),recency=age==null?1:Math.max(.55,1-age/900);return Number(((baseWeight[n.type]??.8)*confirm*(n.pinned?1.25:1)*sources*recency).toFixed(2));};
 
 // This is an administrative, read-only projection. A selected chat never gains
 // access to another chat merely because both are visible in the local catalogue.
@@ -47,7 +50,7 @@ export function memoryStarMap(runtime,params={}){
     return null;
   }
   const records=[];
-  for(const f of store.fixedMemories())records.push({id:'fixed:'+f.id,type:'fixed',title:text(f.text,36),body:f.text,scope:'',personaId:'*',owner:'',sources:[],created:'',updated:'',status:'固定设定',access:'local',version:null});
+  for(const f of store.fixedMemories())records.push({id:'fixed:'+f.id,type:'fixed',title:text(f.text,36),body:f.text,scope:'',personaId:'*',owner:'',sources:[],created:'',updated:'',status:'固定设定',access:'local',version:null,pinned:false,confirmations:0});
   // Iteration avoids an arbitrary SQL pre-limit silently hiding older matches.
   for(const m of db.prepare('SELECT * FROM memories ORDER BY updated DESC,id DESC').iterate()){
     const who=domain(m.scope);if(!who||m.expires&&m.expires<=Date.now()||!sourceValid(m.sourceId,who.scope))continue;
@@ -56,20 +59,22 @@ export function memoryStarMap(runtime,params={}){
     const access=crossAccess(who.scope,owner,person,'fact',m);if(!access)continue;
     if(personaId&&person&&person!==personaId&&access!=='shared')continue;
     const version=db.prepare("SELECT min(created) created,max(id) version FROM memory_versions WHERE memoryId=? AND status='current'").get(m.id);
-    records.push({id:'fact:'+m.id,type:m.type==='event'?'event':m.type==='commitment'?'plan':'fact',title:m.key,body:m.value,scope:who.scope,personaId:person,owner,sources,created:version.created??m.updated,updated:m.updated,status:m.pinned?'固定事实':'有效记忆',access,version:version.version});
+    records.push({id:'fact:'+m.id,type:m.type==='event'?'event':m.type==='commitment'?'plan':'fact',title:m.key,body:m.value,scope:who.scope,personaId:person,owner,sources,created:version.created??m.updated,updated:m.updated,status:m.pinned?'固定事实':'有效记忆',access,version:version.version,pinned:!!m.pinned,confirmations:Number(m.confirmations??0)});
   }
   for(const n of db.prepare("SELECT * FROM memory_notes WHERE status='active' ORDER BY updated DESC,id").iterate()){
     const who=domain(n.scope);if(!who||personaId&&n.personaId!==personaId||!sourceValid(n.sourceId,n.scope)||!store.cognition.validSources('note',n.id,n.scope))continue;
     const owner=who.kind==='private'?who.peer:'';
     const access=crossAccess(n.scope,owner,n.personaId,'note',n);if(!access)continue;
     const type=n.kind==='upcoming'?'plan':n.domain==='notebook'?'note':n.domain==='knowledge'?'topic':n.kind==='moment'?'event':'fact';
-    records.push({id:'note:'+n.id,type,title:n.title,body:n.text,scope:n.scope,personaId:n.personaId,owner,sources:provenance('note',n.id,n.sourceId),created:n.created,updated:n.updated,status:n.kind==='upcoming'?({planned:'计划中',due:'已到期',awaiting_result:'等待结果',completed:'已完成',cancelled:'已取消'}[n.state]??n.state):'有效笔记',access,version:db.prepare('SELECT max(id) n FROM note_revisions WHERE noteId=?').get(n.id).n});
+    records.push({id:'note:'+n.id,type,title:n.title,body:n.text,scope:n.scope,personaId:n.personaId,owner,sources:provenance('note',n.id,n.sourceId),created:n.created,updated:n.updated,status:n.kind==='upcoming'?({planned:'计划中',due:'已到期',awaiting_result:'等待结果',completed:'已完成',cancelled:'已取消'}[n.state]??n.state):'有效笔记',access,version:db.prepare('SELECT max(id) n FROM note_revisions WHERE noteId=?').get(n.id).n,pinned:false,confirmations:0});
   }
   const filtered=records.filter(n=>(!requestedTypes.length||requestedTypes.includes(n.type))&&(!query||(n.title+' '+n.body+' '+(contacts.get(n.scope)?.name??'')+' '+(contacts.get(`${platform}:${account}:private:${n.owner}`)?.name??n.owner)).toLowerCase().includes(query))&&(!until||!n.created||stamp(n.created).slice(0,10)<=until));
   const counts=Object.fromEntries([...recordTypes].map(t=>[t,filtered.filter(n=>n.type===t).length]));
+  const dates=filtered.map(n=>stamp(n.created??n.updated).slice(0,10)).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const stats={total:filtered.length,fixed:counts.fixed,pinned:filtered.filter(n=>n.pinned).length,people:new Set(filtered.map(n=>n.owner).filter(Boolean)).size,chats:new Set(filtered.map(n=>n.scope).filter(Boolean)).size,sources:new Set(filtered.flatMap(n=>n.sources)).size,first:dates[0]??null,last:dates.at(-1)??null,spanDays:dates.length?Math.max(0,Math.round((Date.parse(dates.at(-1))-Date.parse(dates[0]))/86400000)):0,types:counts};
   const revision=digest({platform,account,scope,personaId,query,until,requestedTypes,offset,limit,records:filtered,contacts:[...contacts].map(([s,c])=>[s,c.name]),personas:personas.map(p=>[p.id,p.name])});
   if(params.revision===revision&&!params.node)return {unchanged:true,revision,platform,account};
-  const page=filtered.slice(offset,offset+limit),nodes=new Map(),edges=[];
+  const page=filtered.slice(offset,offset+limit).map(n=>({...n,ageDays:ageDays(n.created??n.updated),weight:weightOf(n)})),nodes=new Map(),edges=[];
   const add=n=>{if(!nodes.has(n.id))nodes.set(n.id,n);return n.id;},link=(a,b,label)=>edges.push({id:digest([a,b,label]).slice(0,24),a,b,label});
   const root=add({id:'center:'+platform+':'+account,type:'center',title:personaId?store.persona(personaId).name:'小鱼',summary:'当前平台的本机记忆',scope:'',personaId,created:''});
   for(const n of page){
@@ -82,11 +87,11 @@ export function memoryStarMap(runtime,params={}){
   }
   // Shared provenance is an explicit, traceable relation; coincident words are not.
   const bySource=new Map();for(const n of page)for(const id of n.sources){const other=bySource.get(id);if(other&&other!==n.id)link(other,n.id,'同一来源 #'+id);else bySource.set(id,n.id);}
-  const result={schema:1,platform,account,scope,personaId,revision,nodes:[...nodes.values()],edges,counts,total:filtered.length,visible:page.length,offset,nextCursor:offset+limit<filtered.length?String(offset+limit):null,earliest:records.map(n=>stamp(n.created).slice(0,10)).filter(Boolean).sort()[0]??null,asOf:new Date().toISOString(),unassigned:filtered.filter(n=>!n.personaId).length,scopeLabel:scope?(contacts.get(scope)?.name??parseScope(scope).peer):'全部本机聊天',readOnly:true};
+  const result={schema:1,platform,account,scope,personaId,revision,nodes:[...nodes.values()],edges,counts,stats,total:filtered.length,visible:page.length,offset,nextCursor:offset+limit<filtered.length?String(offset+limit):null,earliest:stats.first,asOf:new Date().toISOString(),unassigned:filtered.filter(n=>!n.personaId).length,scopeLabel:scope?(contacts.get(scope)?.name??parseScope(scope).peer):'全部本机聊天',readOnly:true};
   if(params.node){
     const n=filtered.find(n=>n.id===params.node);
     if(!n)throw Error('这条记忆已失效、被筛选或不在当前读取范围');
-    result.detail={...n,body:n.body,personaName:n.personaId==='*'?'全部人格':store.persona(n.personaId)?.name??'未标注人格',scopeLabel:n.scope?(contacts.get(n.scope)?.name??n.scope):'当前平台全局设定',sources:n.sources.map(id=>{if(!sourceValid(id,n.scope))throw Error('来源已失效');const s=store.source(id);return {id,scope:s.scope,speaker:s.speaker,created:s.created,text:s.text};})};
+    result.detail={...n,ageDays:ageDays(n.created??n.updated),weight:weightOf(n),body:n.body,personaName:n.personaId==='*'?'全部人格':store.persona(n.personaId)?.name??'未标注人格',scopeLabel:n.scope?(contacts.get(n.scope)?.name??n.scope):'当前平台全局设定',sources:n.sources.map(id=>{if(!sourceValid(id,n.scope))throw Error('来源已失效');const s=store.source(id);return {id,scope:s.scope,speaker:s.speaker,created:s.created,text:s.text};})};
   }
   return result;
 }

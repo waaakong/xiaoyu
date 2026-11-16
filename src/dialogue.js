@@ -1,11 +1,12 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {batchParts} from './message-batch.js';
 import {validId,parseScope} from './chat-identity.js';
-import {naturalChatText} from './chat-rhythm.js';
+import {naturalChatText,stripNarration} from './chat-rhythm.js';
 import {conversationWindow,isConversationQuestion} from './conversation-focus.js';
 const identity=s=>{try{const value=JSON.parse(s);return value&&typeof value==='object'?value:{id:String(s??'')};}catch{return {id:String(s??'')};}};
 const question=isConversationQuestion;
 export const CONTEXT_NOTICE='结合conversationFocus、引用和已投递的前文理解省略、追问与纠正。当前具体问题、明确引用、最近同一发言者的问题优先于更早话题和记忆。短句有anchor就接着该对象，不因旧事更显眼而换题；没有可靠对象才具体澄清。区分消息收到和回复发出的先后，不能把用户在回复前发出的追问当作看过该回复后的新话题。分清谁在问谁、问题是否已回答，不把甲的经历记到乙名下。插件补充历史不能替换当前问题或指代对象。';
-export function queuedParts(entry,pending){const parts=[entry];if(entry.r.policy.contextLinking===false||entry.r.policy.mergeQueued===false)return parts;for(const next of pending){if(next===entry)continue;if(next.absorbed)continue;if(parts.length>=3||next.r.user!==entry.r.user||next.r.policy.personaId!==entry.r.policy.personaId||next.r.policy.engine!==entry.r.policy.engine||next.r.policy.model!==entry.r.policy.model||next.quoteId!==entry.quoteId||next.r.hasImages||next.r.hasAudio||next.r.hasForward||next.r.social||entry.r.hasImages||entry.r.hasAudio||entry.r.hasForward||entry.r.social||/^\//u.test(next.r.text)||/^\//u.test(entry.r.text)||Math.abs(next.receivedAt-entry.receivedAt)>(entry.r.policy.rhythmMode==='social'?3000:1500)||parts.reduce((n,x)=>n+x.r.text.length,0)+next.r.text.length>1500)break;next.absorbed=true;parts.push(next);}return parts;}
+export function queuedParts(entry,pending){return batchParts(entry,pending,{absorb:true});}
 export class Dialogue {
   constructor(store,{now=Date.now}={}){this.store=store;this.db=store.db;this.now=now;this.db.exec(`CREATE TABLE IF NOT EXISTS dialogue_links(messageId INTEGER PRIMARY KEY,scope TEXT,replyToId INTEGER,mentions TEXT DEFAULT '[]');CREATE TABLE IF NOT EXISTS dialogue_sources(scope TEXT,externalId TEXT,messageId INTEGER,PRIMARY KEY(scope,externalId));CREATE TABLE IF NOT EXISTS mention_attempts(id TEXT PRIMARY KEY,scope TEXT,memberId TEXT,state TEXT,at INTEGER);CREATE INDEX IF NOT EXISTS mention_scope ON mention_attempts(scope,memberId,at);CREATE INDEX IF NOT EXISTS messages_scope_run ON messages(scope,runId,role,id);`);}
   alias(id,scope,source){if(typeof source==='string'&&/^[1-9]\d{0,19}$/.test(source))this.db.prepare('INSERT OR IGNORE INTO dialogue_sources VALUES(?,?,?)').run(scope,source,id);}
@@ -37,6 +38,7 @@ export class Dialogue {
     if(target&&!nativeMention){target=null;reason='transport-unsupported';}
     if(target&&this.cooling(r.scope,target.id,r.policy.mentionCooldownSeconds??600)){target=null;reason='cooldown';}
     if(!target&&naturalPrefix)text=originalText.replace(/^@/u,'').trim();
+    text=stripNarration(text);
     if(r.policy.engine==='dsh')text=naturalChatText(text);
     if(!text)throw Error('定向回复移除控制标记后没有正文');
     const plan={text,target:target??null,reason,attemptId:null,scope:r.scope,cooldownSeconds:r.policy.mentionCooldownSeconds??600};

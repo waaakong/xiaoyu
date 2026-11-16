@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Store} from '../src/store.js';
 import {ScheduledTasks} from '../src/scheduled-tasks.js';
-import {parseScheduledRequest,taskIntent,beijingStamp} from '../src/scheduled-time.js';
+import {parseScheduledRequest,taskIntent,beijingStamp,structuredSchedule} from '../src/scheduled-time.js';
+import {randomUUID} from 'node:crypto';
 import {Bridge} from '../src/bridge.js';
 import {policyFor,validateChat} from '../src/config.js';
 
@@ -42,16 +43,16 @@ test('task handling precedes enhanced plugins and never needs a model for a fixe
   const f=fixture(t);let calls=0,plugins=0;const bridge=new Bridge({config:f.config,store:f.s,account:f.account,onebot:{reply:async()=>[]},codex:{chat:async()=>{calls++;throw Error('must not call');}},persona:'小鱼',log:()=>{}});bridge.tasks=f.service;bridge.plugins={handle:async()=>{plugins++;return false;},cancel(){}};t.after(()=>bridge.stop());
   const r=f.request();await bridge.handle({post_type:'message',message_type:'group',self_id:f.account,user_id:f.owner,group_id:f.group,message_id:'fixed',message:r.event.message});assert.equal(f.service.list().length,1);assert.equal(calls,0);assert.equal(plugins,0);
 });
-test('settings default off, owner identity verified and platform scope isolated',async t=>{
+test('settings default off, chat permission replaces owner allowlist and platform scope remains isolated',async t=>{
   const f=fixture(t);f.service.configure({enabled:false});assert.throws(()=>f.service.create(f.request(),parseScheduledRequest('5分钟后提醒我喝水',now)),/未开启/);
-  f.service.configure({enabled:true});assert.equal(f.service.permitted(f.scope,'11'),false);assert.equal(f.service.permitted('wechat:wx_role:group:room@chatroom',f.owner),false);
+  f.service.configure({enabled:true});assert.equal(f.service.permitted(f.scope,'11'),true);assert.equal(f.service.permitted('wechat:wx_role:group:room@chatroom',f.owner),false);
   validateChat({scheduledTasks:{enabled:true,creators:['10']}},true);assert.throws(()=>validateChat({scheduledTasks:{enabled:true,creators:['10','10']}},true));
 });
 for(const platform of ['qq','wechat'])test(`${platform}: clear commands persist, deliver once and never treat typed nickname as permission`,async t=>{
   const f=fixture(t,{platform}),r=f.request();await f.service.command(r);assert.match(f.controls[0],/已安排/);assert.equal(f.service.list().length,1);assert.equal(f.sent.length,0);
   const j=f.service.list()[0];assert.equal(j.sourceId,f.s.historyPage(f.scope)[0].id);assert.equal(j.creator,f.owner);
   f.advance(300000);await Promise.all([f.service.pump(),f.service.pump()]);assert.equal(f.sent.length,1);assert.equal(f.service.get(j.id).status,'completed');await f.service.pump();assert.equal(f.sent.length,1);
-  await f.service.command(f.request('5分钟后提醒我喝水',{user:platform==='qq'?'11':'wxid_impostor',speaker:JSON.stringify({id:'impostor',name:'WaaaKong'})}));assert.equal(f.service.list().length,1);assert.match(f.controls.at(-1),/权限/);
+  f.service.configure({blockedUsers:[platform==='qq'?'11':'wxid_impostor']});await f.service.command(f.request('5分钟后提醒我喝水',{user:platform==='qq'?'11':'wxid_impostor',speaker:JSON.stringify({id:'impostor',name:'WaaaKong'})}));assert.equal(f.service.list().length,1);assert.match(f.controls.at(-1),/黑名单/);
 });
 test('same event key deduplicates, max pending enforced and no content never claims success',async t=>{
   const f=fixture(t),r=f.request(),draft=await f.service.prepare(r),a=f.service.create(r,draft),b=f.service.create(r,draft);assert.equal(a.id,b.id);
@@ -84,4 +85,49 @@ for(const platform of ['qq','wechat'])test(`${platform}: scheduled output reuses
   const f=fixture(t,{platform}),sent=[],voice=[];f.config.defaults.voiceMode='only';f.config.defaults.stickers=false;
   const bridge=new Bridge({config:f.config,store:f.s,account:f.account,persona:'小鱼',codex:{},onebot:{connected:true,capabilities:{voice:true},record:async(_e,_file,o)=>{o.beforeSend();sent.push('voice');return {message_id:'v'};},reply:async()=>{sent.push('text');return [{message_id:'t'}];}},log:()=>{}});t.after(()=>bridge.stop());bridge.voice={synthesize:async(text,o)=>{voice.push(text);o.assertFresh();return {file:'mock.wav',assertFresh:o.assertFresh};}};f.service.send=(j,o)=>bridge.sendScheduled(j,o);
   const j=f.service.create(f.request(),parseScheduledRequest('1分钟后提醒我喝水',now));f.advance(60000);await f.service.pump();assert.deepEqual(sent,['voice']);assert.deepEqual(voice,['喝水']);assert.equal(f.service.get(j.id).status,'completed');assert.equal(f.s.historyPage(f.scope).find(r=>r.role==='assistant').text,'喝水');
+});
+
+test('think tasks need explicit confirmation and reach the sender as a generated turn',async t=>{
+  const f=fixture(t),text='1分钟后你自己想个话题聊聊';
+  assert.equal(taskIntent(text),true);const draft=parseScheduledRequest(text,now);
+  assert.equal(draft.kind,'think');assert.equal(draft.due,now+60000);
+  const j=f.service.create(f.request(text),draft);assert.equal(j.kind,'think');assert.equal(j.status,'awaiting-confirmation');
+  f.service.confirm(j.id,f.owner);f.advance(60000);await f.service.pump();assert.equal(f.sent.length,1);assert.equal(f.sent[0].kind,'think');assert.equal(f.service.get(j.id).status,'completed');
+  assert.equal(parseScheduledRequest('1分钟后提醒我喝水',now).kind,undefined);
+});
+test('bridge generates a scheduled think turn with time context and speaks the whole content',async t=>{
+  const f=fixture(t);f.config.defaults.voiceMode='always';
+  const replies=[],records=[],chats=[];
+  const bridge=new Bridge({config:f.config,store:f.s,account:f.account,persona:'小鱼',codex:{chat:async(req)=>{chats.push(req);return {reply:'第一段\n第二段'};}},onebot:{connected:true,capabilities:{voice:true},reply:async(_e,text)=>{replies.push(text);return [{message_id:'t'+replies.length}];},record:async()=>{records.push('voice');return {message_id:'v'};}},log:()=>{}});t.after(()=>bridge.stop());
+  bridge.voice={synthesize:async(text,o)=>{records.push(text);o.assertFresh();return {file:'mock.wav',assertFresh:o.assertFresh};}};
+  const job={id:'think1',scope:f.scope,creator:f.owner,creatorName:'本人',kind:'think',request:'自己想个话题',content:'到点主动说点什么',executionKey:'run1',due:now,intervalMs:0,repeat:'once',voice:true,mentionSelf:false};
+  const receipts=await bridge.sendScheduled(job,{signal:new AbortController().signal,assertFresh:()=>{},beforeSend:()=>{}});
+  assert.equal(chats.length,1);assert.match(chats[0].persona,/### 当前时间/);assert.match(chats[0].persona,/到点主动发言/);
+  assert.deepEqual(replies,['第一段','第二段']);assert.deepEqual(records,['第一段，第二段','voice']);assert.equal(receipts.length,3);
+});
+
+for(const platform of ['qq','wechat'])test(`${platform}: any member may create; platform, chat and member blacklists take precedence`,async t=>{
+ const f=fixture(t,{platform}),other=platform==='qq'?'11':'wxid_other';f.s.meta('fixed-memory-owner','');const r=f.request('1分钟后提醒我喝水',{user:other}),j=f.service.create(r,parseScheduledRequest(r.text,now));assert.equal(j.creator,other);f.config.defaults.scheduledTasks.creators=[f.owner];assert.equal(f.service.permitted(f.scope,other),true);
+ f.config.defaults.scheduledTasks.blacklist=[other];assert.equal(f.service.permitted(f.scope,other),false);f.config.defaults.scheduledTasks.blacklist=[];f.service.configure({blockedUsers:[other]});assert.equal(f.service.permitted(f.scope,other),false);f.service.configure({blockedUsers:[],blockedChats:[f.scope]});assert.equal(f.service.permitted(f.scope,f.owner),false);f.advance(60000);await f.service.pump();assert.equal(f.sent.length,0);
+});
+test('blacklisting while sending is prepared blocks final submission and allows owner cancellation',async t=>{
+ let started,release;const ready=new Promise(r=>started=r),gate=new Promise(r=>release=r);let submitted=0;const f=fixture(t,{send:async(_j,o)=>{started();await gate;o.beforeSend();submitted++;return [{message_id:'x'}];}}),r=f.request(),j=f.service.create(r,parseScheduledRequest('1分钟后提醒我喝水',now));f.advance(60000);const work=f.service.pump();await ready;f.service.configure({blockedUsers:[f.owner]});release();await work;assert.equal(submitted,0);assert.equal(f.service.get(j.id).status,'failed');
+ f.service.configure({blockedUsers:[]});const k=f.service.create(f.request(),parseScheduledRequest('2分钟后提醒我喝水',now+60000));f.service.configure({blockedUsers:[f.owner]});await f.service.command(f.request('/取消任务 '+k.id));assert.equal(f.service.get(k.id).status,'cancelled');
+});
+test('structured fixed greeting has no owner requirement, model call or fake incoming chat source',async t=>{
+ const f=fixture(t);f.s.meta('fixed-memory-owner','');f.service.generate=async()=>{throw Error('must not call model');};const body={scope:f.scope,requestId:randomUUID(),confirm:true,title:'上午问候',schedule:{kind:'fixed',repeat:'once',date:'2026-11-07',time:'10:01',content:'早上好呀'}};const j=await f.service.createLocal(body);assert.equal(j.origin,'local');assert.equal(j.creator,'local-scheduler');assert.equal(j.sourceId,null);assert.equal(f.s.historyPage(f.scope).length,0);assert.equal((await f.service.createLocal(body)).id,j.id);f.advance(60000);await f.service.pump();assert.equal(f.sent.length,1);assert.equal(f.sent[0].content,'早上好呀');
+});
+test('structured clock validates once/daily/weekly, leap dates, invalid week and natural greeting intent',()=>{
+ const base={kind:'fixed',repeat:'once',date:'2026-11-07',time:'10:01',content:'早安'};assert.equal(structuredSchedule(base,now).due,now+60000);assert.equal(structuredSchedule({...base,repeat:'daily',time:'09:00'},now).due,Date.parse('2026-11-08T09:00:00+08:00'));assert.equal(structuredSchedule({...base,repeat:'weekly',weekday:'1',time:'09:00'},now).due,Date.parse('2026-11-09T09:00:00+08:00'));
+ for(const patch of [{date:'2026-02-29'},{time:'25:00'},{time:'10:00'},{repeat:'weekly',weekday:''},{kind:'arbitrary'},{repeat:'hourly'},{content:''}])assert.throws(()=>structuredSchedule({...base,...patch},now));assert.equal(taskIntent('每天9点打个招呼'),true);assert.equal(parseScheduledRequest('每天9点打个招呼',now).kind,'greeting');assert.equal(parseScheduledRequest('每天9点说早安',now).kind,undefined);
+});
+test('editing is versioned, keeps creator, rechecks recurrence and cannot bypass unknown or running',async t=>{
+ const f=fixture(t),r=f.request(),j=f.service.create(r,parseScheduledRequest('5分钟后提醒我喝水',now));const body={revision:j.revision,confirm:true,title:'改成休息',schedule:{kind:'fixed',repeat:'daily',time:'11:00',content:'休息一下'}};const edited=f.service.edit(j.id,body);assert.equal(edited.creator,f.owner);assert.equal(edited.status,'awaiting-confirmation');assert.equal(edited.content,'休息一下');assert.equal(f.s.db.prepare('SELECT count(*) n FROM scheduled_edits').get().n,1);assert.throws(()=>f.service.edit(j.id,body),/状态/);
+ f.service.setTaskPaused(j.id,true);assert.equal(f.service.get(j.id).status,'paused');assert.equal(f.service.setTaskPaused(j.id,false).status,'awaiting-confirmation');f.s.db.prepare("UPDATE scheduled_tasks SET status='unknown' WHERE id=?").run(j.id);assert.throws(()=>f.service.edit(j.id,{...body,revision:f.service.get(j.id).revision}));assert.throws(()=>f.service.setTaskPaused(j.id,true));
+});
+test('task ownership cannot be used from a different group, even by its creator',async t=>{const f=fixture(t),r=f.request('每天18:00提醒我吃饭'),j=f.service.create(r,parseScheduledRequest(r.text,now));assert.throws(()=>f.service.confirm(j.id,f.owner,'qq:99:group:21'));assert.throws(()=>f.service.cancel(j.id,f.owner,'qq:99:group:21'));assert.throws(()=>f.service.confirm(j.id,'11',f.scope));});
+test('local @ requires explicit real target and platform blacklist blocks targeted local tasks',async t=>{const f=fixture(t),body={scope:f.scope,requestId:randomUUID(),confirm:true,schedule:{kind:'fixed',repeat:'once',date:'2026-11-07',time:'10:01',content:'你好',mentionSelf:true}};await assert.rejects(f.service.createLocal(body),/真实目标/);f.service.configure({blockedUsers:['11']});await assert.rejects(f.service.createLocal({...body,targetMember:'11'}),/黑名单/);});
+test('greeting uses real Bridge generation at due, bounded budget and local identity is never a fake member',async t=>{
+ const f=fixture(t);let models=0;const outputs=[];const bridge=new Bridge({config:f.config,store:f.s,account:f.account,persona:'小鱼',codex:{chat:async p=>{models++;assert.match(p.text,/scheduled-greeting/);return {reply:'早上好呀'};}},onebot:{reply:async(e,text,o)=>{o.beforeSend();outputs.push({event:e,text});return [{message_id:'hello'}];}},log:()=>{}});t.after(()=>bridge.stop());f.service.send=(j,o)=>bridge.sendScheduled(j,o);
+ const body={scope:f.scope,requestId:randomUUID(),confirm:true,schedule:{kind:'greeting',repeat:'once',date:'2026-11-07',time:'10:01',content:'自然打招呼'}};await f.service.createLocal(body);f.advance(60000);await f.service.pump();assert.equal(models,1);assert.equal(outputs[0].text,'早上好呀');assert.equal(outputs[0].event.user_id,f.account);assert.equal(f.service.dashboard().modelUsage[0].calls,1);
 });

@@ -56,8 +56,9 @@ test('pagination, keyword/name/type/date filtering and stable IDs do not fabrica
   const {store,get}=fixture(t);for(let i=0;i<505;i++)store.remember(priv,'测试记忆'+i,'内容'+i);const a=get({});assert.equal(a.total,505);assert.equal(a.visible,500);assert.equal(a.nextCursor,'500');assert.equal(get({cursor:'500'}).visible,5);
   assert.equal(get({query:'测试联系人'}).total,505);assert.equal(get({query:'测试记忆504'}).total,1);assert.equal(get({types:'plan'}).total,0);assert.equal(get({until:'2000-01-01'}).total,0);
   assert.equal(get({}).nodes[1].id,a.nodes[1].id);assert.ok(a.edges.every(e=>!['朋友','恋人','亲密'].includes(e.label)));assert.throws(()=>get({limit:501}));assert.throws(()=>get({types:'unknown'}));
+  assert.equal(a.stats.total,505);assert.equal(a.stats.fixed,0);assert.equal(a.stats.people,1);assert.equal(a.stats.chats,1);assert.equal(a.stats.spanDays,0);assert.equal(a.stats.types.fact,505);assert.ok(a.nodes.find(n=>n.id.startsWith('fact:')).weight>0);assert.equal(typeof a.nodes.find(n=>n.id.startsWith('fact:')).confirmations,'number');
 });
 test('fixed memories are platform-local records, not copies of persona biography or inference',t=>{
-  const {store,get}=fixture(t);store.db.prepare('INSERT INTO fixed_memories VALUES(?,?)').run('autonomy','不必强迫一个人按我的想法做事');const g=get({personaId:'other',until:'2000-01-01'});assert.equal(g.counts.fixed,1);assert.equal(get({node:'fixed:autonomy'}).detail.sources.length,0);
+  const {store,get}=fixture(t);store.db.prepare('INSERT INTO fixed_memories VALUES(?,?)').run('autonomy','不必强迫一个人按我的想法做事');const g=get({personaId:'other',until:'2000-01-01'});assert.equal(g.counts.fixed,1);assert.equal(g.stats.fixed,1);assert.equal(g.stats.pinned,0);assert.equal(g.stats.first,null);const fixed=get({node:'fixed:autonomy'}).detail;assert.equal(fixed.sources.length,0);assert.equal(fixed.ageDays,null);assert.equal(fixed.weight,1.8);
   assert.doesNotMatch(JSON.stringify(g),/基础卡|另一角色/);
 });

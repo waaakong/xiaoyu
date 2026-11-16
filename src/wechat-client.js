@@ -3,6 +3,7 @@ import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {windowsPowerShell,windowsPowerShellEnv} from './windows-powershell.js';
+import {probeProcesses} from './win-process.js';
 import {createClientInspector} from './wechat-client-cache.js';
 
 const exec=promisify(execFile);
@@ -28,9 +29,24 @@ async function inspectWeChatUncached(executable){
 
 export const inspectWeChat=createClientInspector(inspectWeChatUncached);
 
+const INSTALL_PATHS=['Tencent\\Weixin\\Weixin.exe','Tencent\\WeChat\\WeChat.exe'];
+
+export function installCandidates(){
+  const bases=[process.env.ProgramFiles,process.env['ProgramFiles(x86)'],process.env.ProgramW6432,process.env.LOCALAPPDATA&&path.join(process.env.LOCALAPPDATA,'Programs')].filter(Boolean);
+  const found=[];
+  for(const base of bases)for(const rel of INSTALL_PATHS){const file=path.join(base,rel);if(fs.existsSync(file))found.push(file);}
+  return found;
+}
+
 export async function detectWeChatClients(){
-  const code="$ErrorActionPreference='Stop'; $found=@(); Get-CimInstance Win32_Process -Filter \"Name='Weixin.exe' OR Name='WeChat.exe'\" | ForEach-Object {if($_.ExecutablePath){$found+=$_.ExecutablePath}}; foreach($base in @($env:ProgramFiles,${env:ProgramFiles(x86)})){if($base){foreach($rel in @('Tencent\\Weixin\\Weixin.exe','Tencent\\WeChat\\WeChat.exe')){$p=Join-Path $base $rel;if(Test-Path -LiteralPath $p){$found+=$p}}}}; ConvertTo-Json -InputObject @($found | Select-Object -Unique) -Compress";
-  const {stdout}=await exec(windowsPowerShell(),['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(code,'utf16le').toString('base64')],{windowsHide:true,env:windowsPowerShellEnv(),timeout:10000});
-  const candidates=JSON.parse(stdout),results=await Promise.allSettled(candidates.map(inspectWeChat));
+  const probe=await probeProcesses(['Weixin','WeChat']);
+  const seen=new Set(),candidates=[];
+  for(const value of [...probe.rows.map(row=>row.ExecutablePath),...installCandidates()]){
+    if(typeof value!=='string'||!value)continue;
+    const key=value.toLowerCase();
+    if(seen.has(key))continue;
+    seen.add(key);candidates.push(value);
+  }
+  const results=await Promise.allSettled(candidates.map(inspectWeChat));
   return results.map((r,i)=>r.status==='fulfilled'?r.value:{executable:candidates[i],error:'客户端检查失败',signatureValid:false});
 }

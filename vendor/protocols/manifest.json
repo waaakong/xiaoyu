@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "generatedAt": "2026-11-14T03:16:50.375Z",
+  "archives": [
+    {
+      "id": "snowluma",
+      "file": "SnowLuma-v2.4.2-win-x64.zip",
+      "target": "SnowLuma",
+      "version": "2.4.2",
+      "sha256": "0912926c5e73260f35b000278a8658493fc9452f36782c32fa86f0e825bad81a",
+      "bytes": 43361462
+    },
+    {
+      "id": "napcat",
+      "file": "NapCat.Shell.Windows.Node.zip",
+      "target": "NapCat",
+      "version": "4.18.42",
+      "sha256": "77397ac38d66f46383e48f08f35d5f9d37ec575c22069f62d6c600e73b4521ed",
+      "bytes": 124162399
+    }
+  ]
+}

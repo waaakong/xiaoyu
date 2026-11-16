@@ -16,3 +16,46 @@ dialog{background:var(--surface);color:var(--text);border-color:var(--line);bord
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 
 nav button{padding:8px 12px;min-height:38px}.nav-group{margin-top:12px}.aside-bottom p{margin:7px 0;font-size:11px}.lower-grid{gap:18px}.lower-grid>article{min-width:0}.lower-grid p{color:var(--muted)}
+
+/* 环境与连接：先看缺什么，再一步步补齐 */
+.dependency-overview{display:grid;grid-template-columns:158px minmax(0,1fr) auto;gap:22px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:16px 0}
+.dependency-score{display:flex;flex-direction:column;gap:2px;padding-right:20px;border-right:1px solid var(--line)}
+.dependency-score strong{font-size:34px;line-height:1.1;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.dependency-score span{font-size:12px;color:var(--muted)}
+.dependency-overview-main h2{font-size:17px;margin:0 0 6px}
+.dependency-overview-main p{font-size:12px;line-height:1.75;color:var(--muted);margin:0 0 10px;max-width:70ch}
+.dependency-chips,.dependency-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dependency-badge{display:inline-flex;align-items:center;min-height:22px;padding:2px 8px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);color:var(--muted);font-size:11px;white-space:nowrap}
+.dependency-badge.good{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,var(--line));background:transparent}
+.dependency-badge.wait{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:transparent}
+.dependency-badge.required{color:var(--text);background:var(--surface-3)}
+.dependency-overview-actions{display:flex;flex-direction:column;gap:8px;min-width:132px}
+.dependency-overview-actions button{width:100%}
+.dependency-connections{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px;margin:16px 0 4px}
+.dependency-connection{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:15px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.dependency-connection-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dependency-connection-head strong{font-size:14px;color:var(--text)}
+.dependency-connection p{font-size:12px;line-height:1.65;color:var(--muted);margin:0;flex:1;overflow-wrap:anywhere}
+.dependency-connection button{align-self:flex-start;min-height:30px;padding:5px 10px;font-size:12px}
+.dependency-group{margin:22px 0 4px}
+.dependency-group-head{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+.dependency-group-head h2{font-size:15px;margin:0}
+.dependency-group-head button{margin-left:auto;min-height:30px;padding:5px 10px;font-size:12px}
+.dependency-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:12px}
+.dependency-item{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:15px 16px;display:flex;flex-direction:column;gap:7px;min-width:0;opacity:.92}
+.dependency-item.ready{opacity:1;border-color:color-mix(in srgb,var(--good) 28%,var(--line))}
+.dependency-item-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.dependency-item-head strong{font-size:13px;color:var(--text);margin-right:auto;min-width:0}
+.dependency-item p{font-size:12px;line-height:1.65;color:var(--muted);margin:0;overflow-wrap:anywhere}
+.dependency-item small{font-size:11px;color:var(--muted);font-family:Consolas,monospace;overflow-wrap:anywhere}
+.dependency-item .dependency-actions{margin-top:auto;padding-top:4px}
+.dependency-actions button,.dependency-actions a{font-size:12px;min-height:30px;padding:5px 10px}
+.dependency-actions a{align-self:center}
+#dependencies{display:flex;flex-direction:column}#dependencies .heading{order:0}#dependencies #dependencyOverview{order:1}#dependencies #dependencyConnections{order:2}#dependencies #dependencyList{order:3}#dependencies .form-section{order:4}
+#dependencies #dependencyLog{max-height:220px;overflow:auto}
+@media(max-width:900px){.dependency-overview{grid-template-columns:1fr;gap:14px}.dependency-score{flex-direction:row;align-items:baseline;gap:10px;border-right:0;border-bottom:1px solid var(--line);padding:0 0 10px}.dependency-overview-actions{flex-direction:row;flex-wrap:wrap}.dependency-overview-actions button{width:auto}.dependency-score strong{font-size:30px}}
+@media(max-width:650px){.dependency-connections,.dependency-grid{grid-template-columns:minmax(0,1fr)}.dependency-group-head{flex-wrap:wrap}.dependency-group-head button{margin-left:0}}
+
+/* Scheduled task forms share the existing glass controls and responsive grid. */
+.scheduled-preview{grid-column:1/-1;min-width:0;overflow-wrap:anywhere;margin:8px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(var(--glass-rgb),.35)}
+.scheduled-panel .companion-card{min-width:0;overflow-wrap:anywhere}.scheduled-panel .companion-card button{margin:4px 6px 0 0}.scheduled-panel>details{margin:16px 0}.scheduled-panel>details>summary{cursor:pointer;margin-bottom:10px}

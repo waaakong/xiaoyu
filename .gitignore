@@ -51,3 +51,9 @@ build/
 release/
 
 MANIFEST.sha256.json
+
+# Local diagnostics and temporary review artifacts.
+tmp/
+log/
+log-cache/
+tmp-read-db.mjs

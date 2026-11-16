@@ -13,8 +13,10 @@ export function validateServices(value){
 export class ServiceManager {
   constructor(dataDir,{projectRoot,log=()=>{},fetcher=fetch,spawner=spawn,sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}){this.base=path.resolve(dataDir);this.file=path.join(this.base,'services.json');this.project=projectRoot??path.dirname(this.base);Object.assign(this,{log,fetcher,spawner,sleep});this.child=null;this.kind=null;this.starting=null;this.closing=false;this.lastError=null;this.health=null;this.failedStarts=0;}
   config(){try{return validateServices(read(this.file));}catch{return {...defaults};}}
-  save(value){if(this.starting||this.child)throw Error('请先停止托管的协议服务再修改设置');const config=validateServices(value);fs.mkdirSync(this.base,{recursive:true});const temp=this.file+'.tmp';fs.writeFileSync(temp,JSON.stringify(config,null,2),{mode:0o600});fs.renameSync(temp,this.file);this.failedStarts=0;return this.state();}
-  detect(){const c=this.config(),roots=[path.dirname(this.project),path.dirname(path.dirname(this.project)),path.join(this.base,'protocols')],found={snowluma:[],napcat:[]};for(const root of roots){if(!fs.existsSync(root))continue;for(const d of fs.readdirSync(root,{withFileTypes:true})){if(!d.isDirectory()||!/^snowluma|^napcat/i.test(d.name))continue;const dir=path.join(root,d.name);if(fs.existsSync(path.join(dir,'index.mjs'))&&fs.existsSync(path.join(dir,'node.exe'))&&fs.existsSync(path.join(dir,'EULA.md')))found.snowluma.push(dir);if(['napcat.bat','launcher.bat'].some(file=>fs.existsSync(path.join(dir,file)))&&fs.existsSync(path.join(dir,'napcat.mjs')))found.napcat.push(dir);}}
+  save(value){if(this.starting||this.child)throw Error('请先停止托管的协议服务再修改设置');let config=validateServices(value);if(config.enabled){const key=config.protocol==='snowluma'?'snowlumaPath':'napcatPath';if(!config[key]){const suggested=this.detect().suggested[key];if(suggested)config={...config,[key]:suggested};}}fs.mkdirSync(this.base,{recursive:true});const temp=this.file+'.tmp';fs.writeFileSync(temp,JSON.stringify(config,null,2),{mode:0o600});fs.renameSync(temp,this.file);this.failedStarts=0;return this.state();}
+  detect(){const c=this.config(),roots=[path.dirname(this.project),path.dirname(path.dirname(this.project)),path.join(this.base,'protocols')],found={snowluma:[],napcat:[]};for(const root of roots){if(!fs.existsSync(root))continue;for(const d of fs.readdirSync(root,{withFileTypes:true})){if(!d.isDirectory()||!/^snowluma|^napcat/i.test(d.name))continue;const dir=path.join(root,d.name);if(fs.existsSync(path.join(dir,'index.mjs'))&&fs.existsSync(path.join(dir,'node.exe'))&&fs.existsSync(path.join(dir,'EULA.md')))found.snowluma.push(dir);if(['napcat.bat','launcher.bat'].some(file=>fs.existsSync(path.join(dir,file)))&&(fs.existsSync(path.join(dir,'index.js'))||fs.existsSync(path.join(dir,'napcat.mjs'))))found.napcat.push(dir);}}
+    const recency=dir=>{for(const sub of ['data','logs','config']){try{return fs.statSync(path.join(dir,sub)).mtimeMs;}catch{}}try{return fs.statSync(dir).mtimeMs;}catch{return 0;}};
+    for(const key of ['snowluma','napcat'])found[key]=[...new Set(found[key])].sort((a,b)=>recency(b)-recency(a));
     return {...found,suggested:{...c,snowlumaPath:c.snowlumaPath||found.snowluma[0]||'',napcatPath:c.napcatPath||found.napcat[0]||''}};
   }
   panel(c=this.config()){let port=c.napcatPort;if(c.protocol==='snowluma'){port=5099;try{const config=read(path.join(c.snowlumaPath,'config','runtime.json'));if(Number.isInteger(config.webuiPort)&&config.webuiPort>=1024&&config.webuiPort<=65535)port=config.webuiPort;if(config.webuiHost&&config.webuiHost!=='127.0.0.1'||config.webuiTls?.enabled)throw Error('目前仅支持本机HTTP控制台');}catch(e){if(e.message==='目前仅支持本机HTTP控制台')throw e;}}return `http://127.0.0.1:${port}/`;}
@@ -41,9 +43,13 @@ export class ServiceManager {
         // Keep official consent, password and hookAutoLoad settings unchanged.
       }else{
         if(qqRunning)throw Error('QQ正在运行且未连通NapCat，请先在官方流程处理QQ会话；小鱼不会自动退出QQ或加载第二个Hook');
-        const entry=['napcat.bat','launcher.bat'].map(n=>path.join(dir,n)).find(p=>fs.existsSync(p));
-        if(!entry||!fs.existsSync(path.join(dir,'napcat.mjs')))throw Error('目前支持NapCat官方Shell目录，请核对napcat.mjs和启动脚本');
-        executable=process.env.ComSpec??'C:/Windows/System32/cmd.exe';args=['/d','/s','/c',`""${entry}""`];
+        const script=path.join(dir,'index.js'),node=path.join(dir,'node.exe');
+        if(fs.existsSync(node)&&fs.existsSync(script)){executable=node;args=[script];}
+        else{
+          const entry=['napcat.bat','launcher.bat'].map(n=>path.join(dir,n)).find(p=>fs.existsSync(p));
+          if(!entry||!fs.existsSync(path.join(dir,'napcat.mjs')))throw Error('目前支持NapCat官方Shell目录，请核对index.js或napcat.mjs与启动脚本');
+          executable=process.env.ComSpec??'C:/Windows/System32/cmd.exe';args=['/d','/s','/c',`""${entry}""`];
+        }
       }
       if(this.closing||this.stopping)throw Error('协议启动已取消');
       fs.mkdirSync(this.base,{recursive:true});const output=fs.openSync(path.join(this.base,'protocol-managed.log'),'a',0o600);let child;

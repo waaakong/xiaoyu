@@ -73,3 +73,24 @@ test('both normal and enhanced speech paths dispatch video before model/plugin a
   const e={post_type:'message',message_type:'private',self_id:99,user_id:10,message_id:'voice-'+enhanced,message:[{type:'record',data:{file:'test'}}]};await b.handle(e);assert.equal(dispatches,1);assert.equal(models,0);assert.equal(plugins,0);await b.stop();
  }
 });
+
+test('recent video context contains only this chat and global previews within retention',async t=>{
+ const f=fixture(t);await f.browse.start({platform:'bilibili',minutes:1});await f.browse.active.done;
+ f.video.db.prepare('INSERT INTO video_items VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run('other-item','other-job','bilibili','default','qq:99:group:other','https://www.bilibili.com/video/BVother','别人的视频',JSON.stringify({watchedSeconds:30,scope:'playing'}),'别人的聊天隐私','仅采样','',100000,'analysed');
+ f.video.db.prepare('INSERT INTO video_items VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run('other-persona','other-persona-job','bilibili','persona-2',f.scope,'https://www.bilibili.com/video/BVotherpersona','另一个角色的视频',JSON.stringify({watchedSeconds:20,scope:'playing'}),'另一个角色的聊天视频','仅采样','',100000,'analysed');
+ const own=f.browse.context({scope:f.scope,personaId:'default'});
+ assert.match(own,/# 最近看过的视频/u);assert.match(own,/实际作品/u);assert.match(own,/实际画面中的测试收获/u);assert.match(own,/实际播放采样/u);assert.doesNotMatch(own,/别人的聊天隐私/u);assert.doesNotMatch(own,/另一个角色的聊天视频/u);
+ const otherPersona=f.browse.context({scope:f.scope,personaId:'persona-2'});assert.match(otherPersona,/另一个角色的聊天视频/u);assert.match(otherPersona,/实际作品/u);assert.doesNotMatch(otherPersona,/别人的聊天隐私/u);
+ const other=f.browse.context({scope:'qq:99:group:other',personaId:'default'});assert.match(other,/别人的聊天隐私/u);assert.match(other,/实际作品/u);
+ f.browse.now=()=>100000+8*86400000;assert.equal(f.browse.context({scope:f.scope,personaId:'default'}),'');
+});
+test('structured model labels are stripped from the video digest',async t=>{
+ const f=fixture(t);
+ f.video.db.prepare('INSERT INTO video_items VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run('structured','structured-job','douyin','default','','https://www.douyin.com/video/structured','结构化标题',JSON.stringify({watchedSeconds:7}),'summary：干净的观察正文 uncertainty：不该出现 topic：标签','观察','',100000,'analysed');
+ const text=f.browse.context({scope:f.scope,personaId:'persona-x'});assert.match(text,/干净的观察正文/u);assert.match(text,/实际播放采样 7 秒/u);assert.doesNotMatch(text,/uncertainty|topic|summary：/iu);
+});
+test('chat persona receives the recent video context',async t=>{
+ const f=fixture(t),b=new Bridge({config:{platform:'qq',allowedUsers:['10'],allowedGroups:[],admins:[],defaults:{...f.policy,voiceMode:'off'}},store:f.store,persona:'小鱼',account:'99',onebot:{connected:true},codex:{},log:()=>{}});let seen='';
+ b.videoBrowse={context:({scope,personaId})=>{assert.equal(scope,f.scope);assert.equal(personaId,'default');return '### 最近看过的视频\n- 测试中的视频';}};b.codex.chat=async p=>{seen=p.persona;return {reply:'[SILENT]'};};
+ await b.generateProactive(f.scope,{id:'video-context-test',policy:{...f.policy,historyMessages:4,historyChars:1200,memoryChars:2000}});assert.match(seen,/测试中的视频/u);
+});

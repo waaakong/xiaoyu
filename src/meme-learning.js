@@ -32,10 +32,10 @@ export class MemeLearning {
  }
  record(r,sourceId,hash,status,reason){this.db.prepare('INSERT INTO meme_decisions(scope,personaId,sourceId,hash,status,reason,created) VALUES(?,?,?,?,?,?,?)').run(r.scope,r.policy.personaId,sourceId,hash,status,reason.slice(0,200),this.now());this.db.exec('DELETE FROM meme_decisions WHERE id NOT IN (SELECT id FROM meme_decisions ORDER BY id DESC LIMIT 1000)');}
  async consume(r,packet,response,options={}){const next=(this.collectChain??Promise.resolve()).catch(()=>{}).then(()=>this.consumeOne(r,packet,response,options));this.collectChain=next;return next;}
- async consumeOne(r,packet,response,{sourceId,signal}={}){
-  if(!packet||!this.understandable(r)||!this.sourceFresh(r,sourceId))return;
+ async consumeOne(r,packet,response,{sourceId:fallbackSourceId,signal}={}){
+  if(!packet||!this.understandable(r))return;
   for(const a of validMemeInsights(response.memeInsights)){
-   const entry=packet.entries.find(e=>e.imageId===a.imageId);if(!entry)continue;signal?.throwIfAborted();
+   const entry=packet.entries.find(e=>e.imageId===a.imageId);if(!entry)continue;const sourceId=entry.sourceId??fallbackSourceId;if(!this.sourceFresh(r,sourceId))continue;signal?.throwIfAborted();
    if(a.mediaType!=='sticker'||a.sensitive||a.confidence<.88||privateText.test([a.caption,a.meaning,...a.tags].join(' '))){this.record(r,sourceId,entry.hash,'skipped','不是高置信度安全表情，不收藏');continue;}
    const stable={caption:a.caption,meaning:a.meaning,mood:a.mood,tags:a.tags,usage:a.usage,avoid:a.avoid};
    const pixels=await sharp(entry.bytes,{page:0,pages:1}).resize(9,8,{fit:'fill'}).removeAlpha().greyscale().raw().toBuffer();let bits=0n;for(let i=0;i<64;i++)if(pixels[Math.floor(i/8)*9+i%8]>pixels[Math.floor(i/8)*9+i%8+1])bits|=1n<<BigInt(i);const perceptual=bits.toString(16).padStart(16,'0');

@@ -6,13 +6,14 @@ export function safeEntry(name){
 }
 // Central-directory limits are checked before any DEFLATE allocation. No files are
 // extracted by this parser; the importer only consumes known images/index metadata.
-export function readZip(bytes,{maxEntryLength=32*1024*1024}={}){
-  if(!Number.isSafeInteger(maxEntryLength)||maxEntryLength<1||maxEntryLength>MAX_ZIP)throw new Error('ZIP条目预算无效');
+export function readZip(bytes,{maxEntryLength=32*1024*1024,maxTotal=MAX_ZIP,maxEntries=1600}={}){
+  if(!Number.isSafeInteger(maxEntryLength)||maxEntryLength<1||maxEntryLength>1024*1024*1024)throw new Error('ZIP条目预算无效');
+  if(!Number.isSafeInteger(maxTotal)||maxTotal<1||maxTotal>1024*1024*1024||!Number.isSafeInteger(maxEntries)||maxEntries<1||maxEntries>10000)throw new Error('ZIP总量预算无效');
   if(!Buffer.isBuffer(bytes)||bytes.length>MAX_ZIP||bytes.length<22)throw new Error('ZIP最多200MB');
   let end=-1;for(let p=bytes.length-22;p>=Math.max(0,bytes.length-65557);p--)if(bytes.readUInt32LE(p)===0x06054b50&&p+22+bytes.readUInt16LE(p+20)===bytes.length){end=p;break;}
   if(end<0||bytes.readUInt16LE(end+4)||bytes.readUInt16LE(end+6))throw new Error('不支持多卷或无效ZIP');
   const count=bytes.readUInt16LE(end+10),offset=bytes.readUInt32LE(end+16),size=bytes.readUInt32LE(end+12);
-  if(count>1600||count===65535||offset+size>end)throw new Error('ZIP条目过多或索引无效');
+  if(count>maxEntries||count===65535||offset+size>end)throw new Error('ZIP条目过多或索引无效');
   let p=offset,total=0;const entries=new Map();
   for(let i=0;i<count;i++){
     if(p+46>end||bytes.readUInt32LE(p)!==0x02014b50)throw new Error('ZIP目录损坏');
@@ -20,7 +21,7 @@ export function readZip(bytes,{maxEntryLength=32*1024*1024}={}){
     if(p+46+n+extra+comment>offset+size)throw new Error('ZIP条目损坏');
     const name=safeEntry(bytes.subarray(p+46,p+46+n).toString('utf8'));p+=46+n+extra+comment;
     if(flags&1||![0,8].includes(method)||((external>>>16)&0xf000)===0xa000||entries.has(name))throw new Error('不支持加密、符号链接或重复路径');
-    total+=length;if(total>MAX_ZIP||length>maxEntryLength||length>Math.max(compressed*200,1024*1024))throw new Error('ZIP解压大小或压缩比例超限');
+    total+=length;if(total>maxTotal||length>maxEntryLength||length>Math.max(compressed*200,1024*1024))throw new Error('ZIP解压大小或压缩比例超限');
     if(local+30>offset||bytes.readUInt32LE(local)!==0x04034b50)throw new Error('ZIP本地索引损坏');
     const localNameLength=bytes.readUInt16LE(local+26),localExtra=bytes.readUInt16LE(local+28),start=local+30+localNameLength+localExtra;
     if(start+compressed>offset||bytes.subarray(local+30,local+30+localNameLength).toString('utf8')!==name)throw new Error('ZIP路径或数据范围不匹配');

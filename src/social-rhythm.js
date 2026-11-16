@@ -1,7 +1,8 @@
 import {setTimeout as delay} from 'node:timers/promises';
+import {waitBatch} from './message-batch.js';
 
 export function rhythmWindow(policy={},event={}){if(policy.mergeQueued===false||/^\//u.test(event.text??'')||event.social?.kind==='poke')return event.social?.kind==='poke'?3000:0;return policy.rhythmMode==='social'?3000:policy.rhythmMode==='fast'?650:0;}
-export async function waitForFragments(entry,signal){const ms=rhythmWindow(entry.r.policy,entry.r),remaining=Math.max(0,ms-(Date.now()-entry.receivedAt));if(remaining)await delay(remaining,null,{signal});return remaining;}
+export async function waitForFragments(entry,signal,pending){if(pending)return waitBatch(entry,pending,signal);const ms=rhythmWindow(entry.r.policy,entry.r),remaining=Math.max(0,ms-(Date.now()-entry.receivedAt));if(remaining)await delay(remaining,null,{signal});return remaining;}
 export function coldHistory(rows,text,now=Date.now()){
   if(!rows.length||/(?:上次|之前|还记得|以前|刚才|先前|继续|接着)/u.test(text))return {rows,cold:false};
   const last=rows.at(-1),at=Date.parse(String(last.created??'').replace(' ','T')+(/Z$|[+]\d\d:\d\d$/.test(last.created??'')?'':'Z'));

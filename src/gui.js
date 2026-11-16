@@ -4,6 +4,10 @@ import {wechatVoiceTrial} from './wechat-voice-trial.js';
 import {memoryStarMap} from './memory-star-map.js';
 import {SocialActions} from './social-actions.js';
 import {WeChatManager} from './wechat-runtime.js';
+import {enableWeChatVoice} from './wechat-native-lifecycle.js';
+import {WeChatIO} from './wechat-io.js';
+import {publishMomentUi,inspectMomentsUi,inspectMomentsAlbum,readMomentMedia,readMomentComments} from './wechat-moments-ui.js';
+import {assertClient,inspectWeChat} from './wechat-client.js';
 import {DesktopSense} from './desktop-sense.js';
 import {detectDsh,importDsh,openDsh} from './dsh-install.js';
 import {engineDashboard} from './engine-dashboard.js';
@@ -12,7 +16,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
 import {root,loadConfig} from './config.js';
 import {Runtime,writeConfig} from './runtime.js';
 import {findCodex} from './local.js';
@@ -32,16 +36,16 @@ export function saveSettings(body,runtime){
 export async function startGui({open=true,autoConnect=true,port=0,runtime:providedRuntime}={}){
   const appearance=new Appearance(path.join(root,'data'));
   const runtime=providedRuntime??new Runtime(),token=crypto.randomBytes(32).toString('hex');let origin,lastSeen=Date.now(),closing=false;
-  const files={'/':'index.html','/app.js':'app.js','/engine-dashboard.js':'engine-dashboard.js','/engine-dashboard.css':'engine-dashboard.css','/platforms-ui.js':'platforms-ui.js','/wechat-setup.js':'wechat-setup.js','/shell-ui.js':'shell-ui.js','/layout.js':'layout.js','/layout.css':'layout.css','/page-navigation.js':'page-navigation.js','/shell.css':'shell.css','/integrations.js':'integrations.js','/services.js':'services.js','/dependencies.js':'dependencies.js','/voice.js':'voice.js','/speech.js':'speech.js','/plugin-mode.js':'plugin-mode.js','/memes.js':'memes.js','/meme-learning-ui.js':'meme-learning-ui.js','/web.js':'web.js','/memory.js':'memory.js','/shared-memory.js':'shared-memory.js','/style.css':'style.css','/workbench.css':'workbench.css','/theme.js':'theme.js','/select-controls.js':'select-controls.js','/controls.css':'controls.css','/glass.css':'glass.css','/appearance-ui.js':'appearance-ui.js','/cognition-ui.js':'cognition-ui.js','/gsap.min.js':'gsap.min.js','/logo.svg':'logo.svg','/icons.svg':'icons.svg'};
+  const files={'/':'index.html','/app.js':'app.js','/engine-dashboard.js':'engine-dashboard.js','/engine-dashboard.css':'engine-dashboard.css','/platforms-ui.js':'platforms-ui.js','/wechat-setup.js':'wechat-setup.js','/shell-ui.js':'shell-ui.js','/connection-status.js':'connection-status.js','/layout.js':'layout.js','/layout.css':'layout.css','/page-navigation.js':'page-navigation.js','/shell.css':'shell.css','/integrations.js':'integrations.js','/services.js':'services.js','/dependencies.js':'dependencies.js','/voice.js':'voice.js','/speech.js':'speech.js','/platform-copy.js':'platform-copy.js','/plugin-mode.js':'plugin-mode.js','/memes.js':'memes.js','/meme-learning-ui.js':'meme-learning-ui.js','/web.js':'web.js','/memory.js':'memory.js','/shared-memory.js':'shared-memory.js','/style.css':'style.css','/workbench.css':'workbench.css','/theme.js':'theme.js','/select-controls.js':'select-controls.js','/controls.css':'controls.css','/glass.css':'glass.css','/appearance-ui.js':'appearance-ui.js','/cognition-ui.js':'cognition-ui.js','/gsap.min.js':'gsap.min.js','/logo.svg':'logo.svg','/icons.svg':'icons.svg'};
   files['/wechat-chat-controls.js']='wechat-chat-controls.js';
   for(const file of ['liquid.css','workspace-copy.js','workspace-motion.js'])files['/'+file]=file;
   for(const file of ['memory-star-map.js','memory-star-map.css','star-map-canvas.js'])files['/'+file]=file;
   for(const file of ['breeze-voice-ui.js','breeze-voice.css'])files['/'+file]=file;
   runtime.wechat??=new WeChatManager(runtime);const hostRuntime=runtime;
-  files['/proactive-ui.js']='proactive-ui.js';files['/scheduled-ui.js']='scheduled-ui.js';
+  files['/proactive-ui.js']='proactive-ui.js';files['/scheduled-ui.js']='scheduled-ui.js';files['/scheduled-panel.js']='scheduled-panel.js';files['/scheduled-time.js']='../src/scheduled-time.js';
   files['/publishing-ui.js']='publishing-ui.js';
-  files['/moments-ui.js']='moments-ui.js';files['/life-ui.js']='life-ui.js';
-  files['/video-browse-ui.js']='video-browse-ui.js';files['/dialogue-ui.js']='dialogue-ui.js';files['/companion-ui.js']='companion-ui.js';files['/self-model-ui.js']='self-model-ui.js';files['/companion.css']='companion.css';
+  files['/moments-ui.js']='moments-ui.js';files['/moments.css']='moments.css';files['/life-ui.js']='life-ui.js';
+  files['/video-browse-ui.js']='video-browse-ui.js';files['/dialogue-ui.js']='dialogue-ui.js';files['/rhythm-controls.js']='rhythm-controls.js';files['/companion-ui.js']='companion-ui.js';files['/self-model-ui.js']='self-model-ui.js';files['/companion.css']='companion.css';
   const uiSnapshot=snapshotUi(files,path.join(root,'ui'));
   runtime.desktopSense??=new DesktopSense({directory:runtime.dataDir,onEvent:e=>{for(const r of [hostRuntime,hostRuntime.wechat?.child])if(r&&(!e.platform||e.platform===r.platform)&&(!['qq','wechat'].includes(e.service)||e.service===r.platform))r.life.emit({kind:{recovered:'connected',disconnected:'disconnected',failed:'failed','process-started':'connected','process-stopped':'disconnected'}[e.kind],service:e.service,key:e.service+':'+e.kind+':'+e.at,reason:'本机程序观测事件'});},getServices:()=>({
     xiaoyu:{connected:!runtime.closing,busy:!!runtime.bridge?.total||!!runtime.wechat?.child?.bridge?.total,source:'小鱼运行时'},
@@ -75,6 +79,10 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
           if(route==='/api/video/report'){json(200,runtime.video.report(Object.fromEntries(url.searchParams)));return;}
           if(route==='/api/video/frame'){json(200,runtime.video.frame(Object.fromEntries(url.searchParams)));return;}
 
+          if(route==='/api/wechat/moments/media'){json(200,readMomentMedia(url.searchParams.get('path')));return;}
+          if(route==='/api/wechat/moments/images/file'){const images=hostRuntime.wechat.context().moments.images,f=url.searchParams.get('thumbnail')==='1'?await images.thumbnail(url.searchParams.get('id')):images.file(url.searchParams.get('id'));res.writeHead(200,{...headers,'Content-Type':f.mime,'Cache-Control':'private, max-age=3600'});res.end(f.bytes);return;}
+          if(route==='/api/wechat/moments/images'){const m=hostRuntime.wechat.context().moments;await m.ensureImages();json(200,m.images.dashboard({query:url.searchParams.get('query')??'',category:url.searchParams.get('category')??'',offset:url.searchParams.get('offset'),limit:url.searchParams.get('limit')}));return;}
+          if(route==='/api/wechat/moments/comments'){json(200,hostRuntime.wechat.context().moments.comments.dashboard());return;}
           if(route==='/api/wechat/moments'){json(200,await hostRuntime.wechat.context().moments.dashboard());return;}
           if(route==='/api/notebook'){json(200,runtime.notebook.dashboard());return;}
           if(route==='/api/qzone'){json(200,hostRuntime.qzone.dashboard());return;}
@@ -82,7 +90,7 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
           if(route==='/api/qzone/read'){json(200,await hostRuntime.qzone.read(url.searchParams.get('operation')??'status',Object.fromEntries(url.searchParams)));return;}
           if(route==='/api/awareness'){json(200,hostRuntime.desktopSense.state());return;}
           if(route==='/api/emotions'){const scope=url.searchParams.get('scope'),personaId=url.searchParams.get('personaId');if(scope)runtime.assertScope(scope);json(200,{platform:runtime.platform,states:scope&&personaId?[runtime.store.emotion.read(scope,personaId)]:runtime.store.emotion.list(),fixedMemories:runtime.store.fixedMemories(),resetAt:runtime.store.meta('memory-reset-at')??null});return;}
-          if(route==='/api/connections'){const q=hostRuntime.state(),w=hostRuntime.wechat.state();const recent=(r,platform)=>r?r.store.db.prepare('SELECT created,data FROM usage ORDER BY id DESC LIMIT 4').all().flatMap(row=>{try{const d=JSON.parse(row.data);return [{platform,created:row.created,status:d.status,engine:d.engine,model:d.model,timing:d.timing??{}}];}catch{return [];}}):[];json(200,{at:Date.now(),qq:{connected:!!q.accountId&&q.integrations?.protocol?.online!==false,running:q.running,integrations:q.integrations},wechat:{connected:w.connected,running:w.running,accountVerified:w.accountVerified,mode:w.config.mode,version:w.diagnostics?.client?.version??null,error:w.error},codex:{connected:q.codex},engines:q.modelEngines,recent:[...recent(hostRuntime,'qq'),...recent(hostRuntime.wechat.child,'wechat')].sort((a,b)=>b.created.localeCompare(a.created)).slice(0,6)});return;}
+          if(route==='/api/connections'){const q=hostRuntime.state(),w=hostRuntime.wechat.state();const recent=(r,platform)=>r?r.store.db.prepare('SELECT created,data FROM usage ORDER BY id DESC LIMIT 4').all().flatMap(row=>{try{const d=JSON.parse(row.data);return [{platform,created:row.created,status:d.status,engine:d.engine,model:d.model,timing:d.timing??{}}];}catch{return [];}}):[];json(200,{at:Date.now(),qq:{connected:!!q.accountId&&q.integrations?.protocol?.online!==false,running:q.running,accountId:q.accountId,integrations:q.integrations},wechat:{connected:w.connected,running:w.running,accountId:w.config.account,integrations:hostRuntime.wechat.child?.state()?.integrations??null,accountVerified:w.accountVerified,mode:w.config.mode,version:w.diagnostics?.client?.version??null,error:w.error},codex:{connected:q.codex},engines:q.modelEngines,recent:[...recent(hostRuntime,'qq'),...recent(hostRuntime.wechat.child,'wechat')].sort((a,b)=>b.created.localeCompare(a.created)).slice(0,6)});return;}
           if(route==='/api/wechat'){json(200,hostRuntime.wechat.state());return;}
           if(route==='/api/engines'){json(200,{...hostRuntime.engines.state(),codex:{connected:!!hostRuntime.codex&&!hostRuntime.codex.closed,models:hostRuntime.models??[]},detectedDsh:detectDsh(),dashboard:engineDashboard([['qq',hostRuntime],['wechat',hostRuntime.wechat.child]])});return;}
           if(route==='/api/dependencies'){json(200,await runtime.dependencies.scan());return;}
@@ -129,7 +137,27 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
         if(route.startsWith('/api/video/browse/')){const method={'/api/video/browse/start':'start','/api/video/browse/pause':'pause','/api/video/browse/resume':'resume','/api/video/browse/stop':'stop','/api/video/browse/settings':'configure'}[route];if(!method)throw Error('视频任务接口不存在');json(200,await runtime.video.browse[method](body));return;}
         if(route.startsWith('/api/video/')){const method={'/api/video/settings':'configure','/api/video/start':'start','/api/video/open':'open','/api/video/feedback':'feedback','/api/video/share-preview':'previewShare','/api/video/share-confirm':'confirmShare'}[route];if(route==='/api/video/cancel'){json(200,runtime.video.cancel());return;}if(!method)throw Error('视频接口不存在');json(200,await runtime.video[method](body));return;}
 
-        if(route.startsWith('/api/wechat/moments/')){const service=hostRuntime.wechat.context().moments;const method={'/api/wechat/moments/draft':'draft','/api/wechat/moments/generate':'generate','/api/wechat/moments/prepare':'prepare','/api/wechat/moments/preview':'preview','/api/wechat/moments/confirm':'confirm','/api/wechat/moments/reconcile':'reconcile'}[route];if(!method)throw Error('朋友圈操作不存在');json(200,await service[method](['prepare','preview','reconcile'].includes(method)?body.id:body));return;}
+        if(route==='/api/wechat/moments/ui'){json(200,await hostRuntime.wechat.context().moments.publish(body));return;}
+        if(route==='/api/wechat/moments/images/upload'){const bytes=Buffer.from(String(body.base64??''),'base64');if(!bytes.length)throw Error('图片为空');json(200,await hostRuntime.wechat.context().moments.images.addBytes(bytes,{name:body.name,source:'upload',tags:body.tags,mood:body.mood,caption:body.caption,category:'我的图片'}));return;}
+        if(route==='/api/wechat/moments/images/remove'){json(200,hostRuntime.wechat.context().moments.images.remove(body.id));return;}
+        if(route==='/api/wechat/moments/images/attach'){json(200,hostRuntime.wechat.context().moments.images.attach(body.draftId,body.ids??[]));return;}
+        if(route==='/api/wechat/moments/images/suggest'){const m=hostRuntime.wechat.context().moments;await m.ensureImages();json(200,await m.images.suggest(body.text??'',{mood:body.mood??'',limit:body.limit??3}));return;}
+        if(route==='/api/wechat/moments/comments/native'){json(200,await hostRuntime.wechat.context().moments.readNativeComments());return;}
+        if(route==='/api/wechat/moments/comments/sync'){json(200,await hostRuntime.wechat.context().moments.comments.sync({selfName:String(body.selfName??'')}));return;}
+        if(route==='/api/wechat/moments/comments/inspect'){json(200,await readMomentComments(hostRuntime.wechat,{selfName:String(body.selfName??'')}));return;}
+        if(route==='/api/wechat/moments/native/enable'){json(200,await hostRuntime.wechat.context().moments.nativeComments.enable(body));return;}
+        if(route==='/api/wechat/moments/native/refresh'){json(200,await hostRuntime.wechat.context().moments.nativeComments.refresh());return;}
+        if(route==='/api/wechat/moments/publication/reconcile'){json(200,await hostRuntime.wechat.context().moments.publisher.reconcile(body.id));return;}
+        if(route==='/api/wechat/moments/comments/validate'){if(body.confirm!==true)throw Error('请确认将向该朋友圈发布这条核验回复');json(200,await hostRuntime.wechat.context().moments.comments.replyManual({...body,validation:true}));return;}
+        if(route==='/api/wechat/moments/comments/reply'){json(200,await hostRuntime.wechat.context().moments.comments.replyManual({commentId:body.commentId,text:body.text}));return;}
+        if(route==='/api/wechat/moments/comments/reply-preview'){json(200,await hostRuntime.wechat.context().moments.comments.previewReply(body));return;}
+        if(route==='/api/wechat/moments/comments/post-policy'){json(200,hostRuntime.wechat.context().moments.comments.configurePost(body));return;}
+        if(route==='/api/wechat/moments/comments/reconcile'){json(200,await hostRuntime.wechat.context().moments.comments.reconcile(body));return;}
+        if(route==='/api/wechat/moments/comments/policy'){json(200,hostRuntime.wechat.context().moments.comments.configure(body));return;}
+        if(route==='/api/wechat/moments/inspect'){json(200,await inspectMomentsUi(hostRuntime.wechat,body));return;}
+ if(route==='/api/wechat/moments/album'){json(200,await inspectMomentsAlbum(hostRuntime.wechat));return;}
+        if(route==='/api/wechat/moments/plan'){json(200,hostRuntime.wechat.context().moments.configurePlan(body));return;}
+        if(route.startsWith('/api/wechat/moments/')){const service=hostRuntime.wechat.context().moments;const method={'/api/wechat/moments/draft':'draft','/api/wechat/moments/remove':'removeDraft','/api/wechat/moments/generate':'generate','/api/wechat/moments/prepare':'prepare','/api/wechat/moments/preview':'preview','/api/wechat/moments/confirm':'confirm','/api/wechat/moments/reconcile':'reconcile'}[route];if(!method)throw Error('朋友圈操作不存在');json(200,await service[method](['prepare','preview','reconcile','removeDraft'].includes(method)?body.id:body));return;}
         if(route.startsWith('/api/notebook/')){const method={'/api/notebook/write':'write','/api/notebook/settings':'configure','/api/notebook/edit':'edit'}[route];if(!method)throw Error('日记操作不存在');json(200,await runtime.notebook[method](body));return;}
         if(route.startsWith('/api/qzone/')){const q=hostRuntime.qzone;let result;
           if(route==='/api/qzone/bind')result=body.cookies?await q.bind(body.cookies):await q.autoBind();
@@ -144,7 +172,7 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
         if(route==='/api/engines/save'){if(hostRuntime.engines.diagnosticJob||hostRuntime.bridge?.total||hostRuntime.wechat.child?.bridge?.total)throw Error('请等待当前回复或自检完成，再修改模型连接');json(200,hostRuntime.engines.save(body));}
         else if(route==='/api/engines/test'){if(body.engine!=='dsh')throw Error('此自检仅用于DSH');const r=await hostRuntime.engines.diagnostic({engine:'dsh',model:body.model});hostRuntime.store.usage('local:engine-diagnostic',{engine:r.engine,model:r.model,kind:'engine-diagnostic',status:'completed',...r.usage,timing:{totalMs:r.durationMs}});json(200,r);}
         else if(route==='/api/engines/test-cancel')json(200,hostRuntime.engines.cancelDiagnostic());
-        else if(route==='/api/engines/connect')json(200,await hostRuntime.engines.connectDsh());
+        else if(route==='/api/engines/connect')json(200,await hostRuntime.connectEngine(body.engine??'dsh'));
         else if(route==='/api/engines/import')json(200,await importDsh(hostRuntime.engines,root));
         else if(route==='/api/engines/open')json(200,openDsh(hostRuntime.engines));
         else if(route==='/api/engines/quota'){if(body.engine&&!['codex','dsh'].includes(body.engine))throw Error('引擎无效');json(200,await hostRuntime.engines.refreshQuotas(body.engine,true));}
@@ -153,16 +181,21 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
         else if(route==='/api/wechat/reader-runtime')json(200,await hostRuntime.wechat.backend.selectRuntime(body));
         else if(route==='/api/wechat/environment'){json(200,await hostRuntime.wechat.backend.environment());}
         else if(route==='/api/wechat/foreground-probe')json(200,await hostRuntime.wechat.probeForeground());
+        else if(route==='/api/wechat/uia-probe'){const w=hostRuntime.wechat;await w.backend.startReader();const client=assertClient(await inspectWeChat(w.config.executable));const io=new WeChatIO({config:()=>w.config,root,dir:w.dataDir});const reader=await io.reader('/api/v1/reader/status');const identity=await w.backend.verifyIdentity({client,reader});const file=path.join(root,'tmp','uia-dump.json');const result=await w.accessibility.run({client,identity},async({adapted})=>{execFileSync('powershell.exe',['-NoProfile','-STA','-ExecutionPolicy','Bypass','-File',path.join(root,'tmp','uia-dump.ps1'),'-TargetPid',String(identity.clientPid),'-Out',file],{timeout:20000,windowsHide:true});return {adapted,file};});const dump=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[];json(200,{...result,pid:identity.clientPid,count:Array.isArray(dump)?dump.length:0,items:Array.isArray(dump)?dump.slice(0,400):[]});}
         else if(route==='/api/wechat/detect')json(200,await hostRuntime.wechat.detect());
         else if(route==='/api/wechat/use-system')json(200,await hostRuntime.wechat.useSystem(body));
         else if(route==='/api/wechat/diagnose')json(200,await hostRuntime.wechat.diagnose());
+        else if(route==='/api/wechat/voice-enable')json(200,await enableWeChatVoice(hostRuntime.wechat.backend));
         else if(route==='/api/wechat/use-prepared')json(200,await hostRuntime.wechat.usePrepared());
         else if(route==='/api/awareness/save')json(200,hostRuntime.desktopSense.configure(body));
         else if(route==='/api/social/prepare'){runtime.socialActions??=new SocialActions(runtime);json(200,await runtime.socialActions.prepare(body));}
         else if(route==='/api/social/send'){runtime.socialActions??=new SocialActions(runtime);json(200,await runtime.socialActions.send(body));}
         else if(route==='/api/scheduled-tasks/settings')json(200,runtime.tasks.configure(body));
         else if(route==='/api/scheduled-tasks/chat'){runtime.assertScope(body.scope);json(200,runtime.saveChat(body.scope,{scheduledTasks:body.policy}));}
-        else if(route==='/api/scheduled-tasks/create'){runtime.assertScope(body.scope);if(body.confirm!==true||!runtime.bridge)throw Error('请确认本次任务且先启动平台接入');const creator=String(body.creator??runtime.tasks.dashboard().owner),r={scope:body.scope,user:creator,creatorName:'本机确认',sourceKey:'local:'+(typeof body.requestId==='string'&&/^[a-f0-9-]{36}$/.test(body.requestId)?body.requestId:crypto.randomUUID()),speaker:JSON.stringify({id:creator,name:'本机确认'}),text:String(body.request??'')};if(!r.text||r.text.length>1000)throw Error('任务描述需1—1000字');const existing=runtime.tasks.bySource(r.sourceKey);if(existing){runtime.tasks.assertAllowed(existing.scope,existing.creator);if(existing.scope!==r.scope||existing.creator!==r.user)throw Error('任务请求标识冲突');json(200,existing);return;}const draft=await runtime.tasks.prepare(r);if(draft.clarify)throw Error(draft.clarify);json(200,runtime.tasks.create(r,draft,{confirmRepeat:body.confirmRepeat===true}));}
+        else if(route==='/api/scheduled-tasks/create'){runtime.assertScope(body.scope);json(200,await runtime.tasks.createLocal(body));}
+        else if(route==='/api/scheduled-tasks/preview'){runtime.assertScope(body.scope);json(200,{...runtime.tasks.preview(body.schedule),submitted:false});}
+        else if(route==='/api/scheduled-tasks/edit'){const job=runtime.tasks.get(body.id);if(!job)throw Error('任务不存在');runtime.assertScope(job.scope);json(200,runtime.tasks.edit(body.id,body));}
+        else if(route==='/api/scheduled-tasks/task-pause'){const job=runtime.tasks.get(body.id);if(!job)throw Error('任务不存在');runtime.assertScope(job.scope);json(200,runtime.tasks.setTaskPaused(body.id,body.paused));}
         else if(route==='/api/scheduled-tasks/cancel'){const job=runtime.tasks.get(body.id);if(!job)throw Error('任务不存在');runtime.assertScope(job.scope);json(200,runtime.tasks.cancel(body.id));}
         else if(route==='/api/scheduled-tasks/confirm'){const job=runtime.tasks.get(body.id);if(!job)throw Error('任务不存在');runtime.assertScope(job.scope);json(200,runtime.tasks.confirm(body.id,job.creator));}
         else if(route==='/api/scheduled-tasks/resume'){const job=runtime.tasks.get(body.id);if(!job)throw Error('任务不存在');runtime.assertScope(job.scope);json(200,runtime.tasks.resume(body.id));}

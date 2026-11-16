@@ -6,15 +6,20 @@ import path from 'node:path';
 import os from 'node:os';
 import {validatePluginCommands} from './plugin-gateway.js';
 export const root = path.resolve(import.meta.dirname, '..');
-export const chatDefaults={memeAutoCollect:false,memeBackground:false,scheduledTasks:{enabled:false,creators:[]},proactive:{enabled:false},quoteReplies:true,forwardSend:true,pokeSend:true,pokeResponse:false,pokeReturn:false,pokeCooldownSeconds:300,forwardRead:true,contextLinking:true,mergeQueued:true,rhythmMode:'fast',maxBubbles:2,groupMentionMode:'auto',mentionCooldownSeconds:600,speechInput:false,speechEmotion:true,speechWakeWord:false,personaId:'default',model:null,engine:null,wakeMode:'mention',keywordMatch:'contains',wakeWords:['小鱼','大肥鱼'],followupSeconds:60,naturalProbability:0.05,naturalCooldownSeconds:120,historyMessages:20,historyChars:14000,memoryChars:1600,images:true,stickers:true,stickerLibraryId:'',stickerMode:'atmosphere',stickerCooldownSeconds:30,stickerEdge:300,webSearch:false,autoSummary:true,crossMemoryRead:false,crossMemoryWrite:false,pluginsEnabled:false,pluginCommands:[]};
+export const chatDefaults={memeAutoCollect:false,memeBackground:false,scheduledTasks:{enabled:false,blacklist:[]},proactive:{enabled:false},quoteReplies:true,forwardSend:true,pokeSend:true,pokeResponse:false,pokeReturn:false,pokeCooldownSeconds:300,forwardRead:true,contextLinking:true,mergeQueued:true,humanStyle:true,naturalDelay:true,aggregateTextMs:null,aggregateMediaMs:null,aggregateMaxMs:null,replyDelayMinMs:1000,replyDelayMaxMs:8000,rhythmMode:'fast',maxBubbles:2,groupMentionMode:'auto',mentionCooldownSeconds:600,speechInput:false,speechEmotion:true,speechWakeWord:false,personaId:'default',model:null,engine:null,wakeMode:'mention',keywordMatch:'contains',wakeWords:['小鱼','大肥鱼'],followupSeconds:60,naturalProbability:0.05,naturalCooldownSeconds:120,historyMessages:20,historyChars:14000,memoryChars:1600,images:true,stickers:true,stickerLibraryId:'',stickerMode:'atmosphere',stickerCooldownSeconds:30,stickerEdge:300,webSearch:false,autoSummary:true,crossMemoryRead:false,crossMemoryWrite:false,pluginsEnabled:false,pluginCommands:[]};
 export function validateChat(c,partial=false){
   const allowed=new Set([...Object.keys(chatDefaults),'enabled','voiceMode','pluginMode','pluginCallLimit','allowedSenders']);
   if(!c||typeof c!=='object'||Array.isArray(c)||Object.keys(c).some(k=>!allowed.has(k)))throw new Error('聊天设置字段不合法');
   for(const k of ['memeAutoCollect','memeBackground','quoteReplies','forwardSend','pokeSend','pokeResponse','pokeReturn','forwardRead','enabled','images','stickers','webSearch','autoSummary','crossMemoryRead','crossMemoryWrite','pluginsEnabled','speechInput','speechEmotion','speechWakeWord'])if(c[k]!==undefined&&typeof c[k]!=='boolean')throw new Error(`${k} 必须为开关`);
   if(c.pokeCooldownSeconds!==undefined&&(!Number.isInteger(c.pokeCooldownSeconds)||c.pokeCooldownSeconds<30||c.pokeCooldownSeconds>3600))throw Error('拍一拍冷却范围30—3600秒');
+  if(c.humanStyle!==undefined&&typeof c.humanStyle!=='boolean')throw Error('拟人口语必须为开关');
+  if(c.naturalDelay!==undefined&&typeof c.naturalDelay!=='boolean')throw Error('自然节奏必须为开关');
+  for(const [k,min,max]of [['aggregateTextMs',100,10000],['aggregateMediaMs',100,15000],['aggregateMaxMs',1000,30000],['replyDelayMinMs',0,5000],['replyDelayMaxMs',0,10000]])if(c[k]!=null&&(!Number.isInteger(c[k])||c[k]<min||c[k]>max))throw Error('消息节奏范围无效：'+k);
+  if(c.replyDelayMinMs!=null&&c.replyDelayMaxMs!=null&&c.replyDelayMinMs>c.replyDelayMaxMs)throw Error('自然延迟最小值不能大于最大值');
+  if(c.aggregateMaxMs!=null&&[c.aggregateTextMs,c.aggregateMediaMs].some(v=>v!=null&&v>c.aggregateMaxMs))throw Error('静默窗口不能超过最长等待');
   if(c.rhythmMode!==undefined&&!['instant','fast','social'].includes(c.rhythmMode))throw Error('聊天节奏无效');
   if(c.maxBubbles!==undefined&&![1,2,3].includes(c.maxBubbles))throw Error('分条上限为1—3');
-  if(c.scheduledTasks!==undefined)validateScheduled(c.scheduledTasks);
+  if(c.scheduledTasks!==undefined)c.scheduledTasks=validateScheduled(c.scheduledTasks);
   if(c.proactive!==undefined)validateProactive(c.proactive);
   if(c.pluginCommands!==undefined)validatePluginCommands(c.pluginCommands);
   for(const k of ['contextLinking','mergeQueued'])if(c[k]!==undefined&&typeof c[k]!=='boolean')throw Error('上下文设置必须为开关');
@@ -42,7 +47,7 @@ export function policyFor(config,scope){
   const own=config.chats?.[scope],engine=own?.model&&!Object.hasOwn(own,'engine')?'codex':own?.engine??base.engine;
   // Inheriting a model is only valid inside the same engine. A chat selecting
   // DSH over a Codex platform default must use DSH's own default, and vice versa.
-  return {...base,...own,engine,model:own?.model??((engine??'codex')===(base.engine??'codex')?base.model:null)};
+  return {...base,...own,scheduledTasks:validateScheduled(own?.scheduledTasks??base.scheduledTasks??{}),engine,model:own?.model??((engine??'codex')===(base.engine??'codex')?base.model:null)};
 }
 export function stripLegacyWeb(policy){return Object.fromEntries(Object.entries(policy??{}).filter(([k])=>!['webFetch','webProvider','douyinRead'].includes(k)));}
 export function loadConfig(file = path.join(root, 'config.json')) {

@@ -49,12 +49,24 @@ def integrity_level():
 
 def matching_roots(rows, executable):
     expected = ntpath.normcase(ntpath.normpath(executable))
-    matched = {int(r['ProcessId']): int(r['ParentProcessId']) for r in rows
-               if isinstance(r.get('ExecutablePath'), str)
-               and ntpath.normcase(ntpath.normpath(r['ExecutablePath'])) == expected}
+    matched = {}
+    for row in rows:
+        if not isinstance(row.get('ExecutablePath'), str):
+            continue
+        if ntpath.normcase(ntpath.normpath(row['ExecutablePath'])) != expected:
+            continue
+        pid = int(row['ProcessId'])
+        parent = row.get('ParentProcessId')
+        matched[pid] = int(parent) if isinstance(parent, (int, str)) and str(parent).lstrip('-').isdigit() else None
     roots = []
     for pid, parent in matched.items():
-        if pid <= 0 or parent == pid:
+        if pid <= 0:
+            raise ValueError('WECHAT_PROCESS_IDENTITY_UNCLEAR')
+        if parent is None:
+            # Get-Process answers without WMI but cannot report parents; treat each match as a root.
+            roots.append(pid)
+            continue
+        if parent == pid:
             raise ValueError('WECHAT_PROCESS_IDENTITY_UNCLEAR')
         seen = {pid}
         ancestor = parent
@@ -68,7 +80,6 @@ def matching_roots(rows, executable):
     if matched and not roots:
         raise ValueError('WECHAT_PROCESS_IDENTITY_UNCLEAR')
     return roots
-
 
 def verified_path(pid, executable):
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -104,40 +115,50 @@ def select_live_identity(results):
 
 def resolver(reference):
     cached = []
+    powershell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    env = dict(os.environ)
+    for key in list(env):
+        if key.casefold() == 'psmodulepath':
+            del env[key]
+    env['PSModulePath'] = str(powershell.parent / 'Modules')
+    # WMI is the richest source but can be denied outright; Get-Process needs no WMI and still answers.
+    queries = (
+        ('CIM', "@((Get-CimInstance Win32_Process -Filter \"Name='Weixin.exe' OR Name='WeChat.exe'\") | Select-Object ProcessId,ParentProcessId,ExecutablePath) | ConvertTo-Json -Compress"),
+        ('Get-Process', "@(Get-Process -Name @('Weixin','WeChat') -ErrorAction SilentlyContinue | ForEach-Object {$path=$null;try{$path=$_.Path}catch{};[pscustomobject]@{ProcessId=[int]$_.Id;ParentProcessId=$null;ExecutablePath=$path}}) | ConvertTo-Json -Compress"),
+    )
+
+    def query(code):
+        result = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-Command', code],
+                                capture_output=True, timeout=8, env=env, creationflags=0x08000000)
+        if result.returncode:
+            raise ValueError('powershell exit ' + str(result.returncode))
+        rows = json.loads(result.stdout.decode('utf-8-sig') or '[]') or []
+        return rows if isinstance(rows, list) else [rows]
 
     def pids(executable):
         nonlocal cached
         if cached and all(verified_path(pid, executable) for pid in cached):
             return cached
-        cached = reference.wechat_pids(executable)
+        try:
+            cached = reference.wechat_pids(executable)
+        except (OSError, ValueError, KeyError, AttributeError):
+            cached = []
         if cached:
             return cached
-        powershell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
-        code = "@((Get-CimInstance Win32_Process -Filter \"Name='Weixin.exe' OR Name='WeChat.exe'\") | Select-Object ProcessId,ParentProcessId,ExecutablePath) | ConvertTo-Json -Compress"
-        env = dict(os.environ)
-        for key in list(env):
-            if key.casefold() == 'psmodulepath':
-                del env[key]
-        env['PSModulePath'] = str(powershell.parent / 'Modules')
-        try:
-            result = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-Command', code],
-                                    capture_output=True, timeout=8, env=env, creationflags=0x08000000)
-            if result.returncode:
-                raise ValueError('CIM failed')
-            rows = json.loads(result.stdout.decode('utf-8-sig') or '[]') or []
-            rows = rows if isinstance(rows, list) else [rows]
-            discovered = matching_roots(rows, executable)
-            if not all(verified_path(pid, executable) for pid in discovered):
-                raise ValueError('PID identity changed or unavailable')
+        for label, code in queries:
+            try:
+                discovered = matching_roots(query(code), executable)
+                if not all(verified_path(pid, executable) for pid in discovered):
+                    raise ValueError('PID identity changed or unavailable')
+            except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+                continue
             cached = discovered
             if cached:
                 reference.progress('系统进程检测已核验当前微信，正在进行本次读取组件试接。')
             return cached
-        except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
-            raise reference.SetupError('WECHAT_PROCESS_IDENTITY_UNCLEAR') from None
+        raise reference.SetupError('WECHAT_PROCESS_IDENTITY_UNCLEAR') from None
 
     return pids
-
 
 def main():
     request = {'operation':'environment'} if len(sys.argv)>2 and sys.argv[2]=='--environment' else json.loads(sys.stdin.read(128001))
@@ -161,11 +182,21 @@ def main():
             probe_spec = importlib.util.spec_from_file_location('xiaoyu_account_probe', Path(__file__).with_name('wechat-live-account.py'))
             probe = importlib.util.module_from_spec(probe_spec)
             probe_spec.loader.exec_module(probe)
-            result = select_live_identity([probe.account_handles(pid, request['wechatExecutable']) for pid in pids])
+            results, denied = [], []
+            for pid in pids:
+                try:
+                    results.append(probe.account_handles(pid, request['wechatExecutable']))
+                except OSError:
+                    denied.append(pid)
+            if not results and denied:
+                raise reference.SetupError('WECHAT_LIVE_IDENTITY_ACCESS_DENIED')
+            result = select_live_identity(results)
             reference.emit({'type':'result','ok':True,**result})
-        except (OSError, reference.SetupError, ValueError, KeyError):
-            reference.emit({'type':'result','ok':False,'code':'WECHAT_LIVE_IDENTITY_UNAVAILABLE'})
+        except (OSError, reference.SetupError, ValueError, KeyError) as error:
+            code = 'WECHAT_LIVE_IDENTITY_ACCESS_DENIED' if 'ACCESS_DENIED' in str(error) else 'WECHAT_LIVE_IDENTITY_UNAVAILABLE'
+            reference.emit({'type':'result','ok':False,'code':code})
         return
+
     original_capture = reference.capture_key
     process_pids = resolver(reference)
 

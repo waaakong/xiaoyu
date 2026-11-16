@@ -1,3 +1,4 @@
+import {platformName} from './platform-copy.js';
 export function createSharedMemoryUI({node,button,edit,api,notice,viewText,getScope,getConversation,getCatalog,reload}){
   let memberId='';
   function owner(m){const parts=m.scope.split(':');return {platform:parts[0],account:parts[1],owner:parts[2]==='private'?parts[3]:parts[5]};}
@@ -21,10 +22,10 @@ export function createSharedMemoryUI({node,button,edit,api,notice,viewText,getSc
         actions.append(button('版本与授权记录',async()=>{const d=await api('shared/details?id='+f.id);viewText('共享事实记录',`来源：${d.originScope}\n\n`+d.versions.map(v=>`${v.created} · ${v.status}\n${v.key}：${v.value}`).join('\n\n')+'\n\n授权变更：\n'+d.audit.map(a=>`${a.created} · ${a.action} · ${a.actor}\n${JSON.stringify(a.detail)}`).join('\n'));},'quiet'));
         if(f.active)actions.append(button('停止共享',async()=>{await api('shared/action',{id:f.id,action:'stop'});await reload();notice('已停止跨聊使用，来源记忆保留。');},'quiet'));
         if(f.targets.includes(scope))actions.append(button(f.hiddenTargets.includes(scope)?'恢复本聊使用':'仅本聊隐藏',async()=>{await api('shared/action',{id:f.id,scope,action:f.hiddenTargets.includes(scope)?'unhide':'hide'});await reload();},'quiet'));
-        if(f.key)actions.append(button('全局忘记',async()=>{edit('全局忘记共享事实',[{name:'confirmText',label:'输入“忘记”确认',required:true}],async data=>{if(data.confirmText!=='忘记')throw new Error('请输入“忘记”');await api('shared/action',{id:f.id,action:'forget'});await reload();},'将删除这条来源记忆和版本，使所有共享引用失效。已发送的QQ回复无法撤回；若只想停止跨聊，请使用“停止共享”。');},'quiet danger'));
+        if(f.key)actions.append(button('全局忘记',async()=>{edit('全局忘记共享事实',[{name:'confirmText',label:'输入“忘记”确认',required:true}],async data=>{if(data.confirmText!=='忘记')throw new Error('请输入“忘记”');await api('shared/action',{id:f.id,action:'forget'});await reload();},`将删除这条来源记忆和版本，使所有共享引用失效。已发送的${platformName()}回复无法撤回；若只想停止跨聊，请使用“停止共享”。`);},'quiet danger'));
         row.append(body,actions);list.append(row);}
       if(!facts.length)list.append(node('p','empty','尚无个人共享事实；先从“当前聊天”中选择记忆发布，或由本人发送 /跨聊记住 键=值。'));
-      const preview=node('div','form-section'),select=node('select'),query=node('input'),output=node('pre','source-quote','目标预览不调用模型、不发送QQ。');select.setAttribute('aria-label','共享目标预览聊天');
+      const preview=node('div','form-section'),select=node('select'),query=node('input'),output=node('pre','source-quote',`目标预览不调用模型、不发送${platformName()}。`);select.setAttribute('aria-label','共享目标预览聊天');
       const who=scope.split(':');const peer=group?memberId:who[3];for(const c of getCatalog().contacts.items.filter(c=>c.account===who[1]&&(c.kind==='group'||c.peer===peer))){const o=node('option','',c.name+' · '+c.peer);o.value=c.scope;select.append(o);}query.placeholder='例如：我喜欢喝什么？';query.setAttribute('aria-label','共享目标预览问题');preview.append(node('h3','','目标聊天召回预览'),select,query,button('预览目标召回',async()=>{const r=await api('memory/preview',{scope:select.value,memberId:peer,query:query.value});output.textContent=`${r.chars}/${r.budget}字符 · 共享${r.sharedChars??0}/400字符 · ${r.durationMs}ms\n\n${r.memory}\n${r.summary}`;}),output);list.append(preview);
     }
     await draw();

@@ -1,11 +1,13 @@
 module.exports = {
+  electronDist: 'node_modules/electron/dist',
   appId: 'com.waaakong.xiaoyu',
   productName: '小鱼',
   directories: { output: 'release' },
   files: ['electron/**', 'desktop/icon.ico', 'package.json', '!node_modules/**'],
   extraResources: [
     { from: 'build/backend', to: 'backend' },
-    { from: 'build/runtime', to: 'runtime' }
+    { from: 'build/runtime', to: 'runtime' },
+    { from: 'vendor/protocols', to: 'protocols', filter: ['manifest.json', '**/*.zip', 'THIRD-PARTY.txt'] }
   ],
   asar: true,
   win: { target: [{ target: 'nsis', arch: ['x64'] }], icon: 'desktop/icon.ico',
