@@ -49,5 +49,5 @@ test('summary retains raw archive and covers only history outside the recent win
 });
 test('image inputs are bounded and arbitrary URLs are rejected',async()=>{
   assert.throws(()=>qqImageUrl('http://127.0.0.1/a'));assert.throws(()=>qqImageUrl('https://qpic.cn.attacker.test/a'));assert.throws(()=>qqImageUrl('https://user:pass@gchat.qpic.cn/a'));assert.match(qqImageUrl('https://gchat.qpic.cn/a'),/qpic/);
-  await assert.rejects(()=>imageInfo(Buffer.alloc(MAX_IMAGE+1)),/5MB/);const bytes=await sharp({create:{width:20,height:20,channels:3,background:'red'}}).png().toBuffer();const inputs=await imageInputs(bytes);assert.equal(inputs.length,1);assert.match(inputs[0].url,/^data:image\/jpeg;base64,/);
+  await assert.rejects(()=>imageInfo(Buffer.alloc(MAX_IMAGE+1)),/5MB/);const bytes=await sharp({create:{width:20,height:20,channels:3,background:'red'}}).png().toBuffer();const inputs=await imageInputs(bytes);assert.equal(inputs.length,1);assert.match(inputs[0].url,/^data:image\/png;base64,/);const decoded=Buffer.from(inputs[0].url.split(',')[1],'base64'),meta=await sharp(decoded).metadata();assert.equal(meta.format,'png');assert.equal(meta.width,20);assert.equal(meta.height,20);assert.ok(decoded.length<=MAX_IMAGE);
 });
