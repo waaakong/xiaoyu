@@ -43,9 +43,9 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
   for(const file of ['breeze-voice-ui.js','breeze-voice.css'])files['/'+file]=file;
   runtime.wechat??=new WeChatManager(runtime);const hostRuntime=runtime;
   files['/proactive-ui.js']='proactive-ui.js';files['/scheduled-ui.js']='scheduled-ui.js';files['/scheduled-panel.js']='scheduled-panel.js';files['/scheduled-time.js']='../src/scheduled-time.js';
-  files['/publishing-ui.js']='publishing-ui.js';
-  files['/moments-ui.js']='moments-ui.js';files['/moments.css']='moments.css';files['/life-ui.js']='life-ui.js';
-  files['/video-browse-ui.js']='video-browse-ui.js';files['/dialogue-ui.js']='dialogue-ui.js';files['/rhythm-controls.js']='rhythm-controls.js';files['/companion-ui.js']='companion-ui.js';files['/self-model-ui.js']='self-model-ui.js';files['/companion.css']='companion.css';
+  files['/publishing-ui.js']='publishing-ui.js';files['/notebook-controls.js']='notebook-controls.js';
+  files['/moments-ui.js']='moments-ui.js';files['/moments-workflow-ui.js']='moments-workflow-ui.js';files['/moments.css']='moments.css';files['/life-ui.js']='life-ui.js';
+  files['/video-browse-ui.js']='video-browse-ui.js';files['/dialogue-ui.js']='dialogue-ui.js';files['/rhythm-controls.js']='rhythm-controls.js';files['/companion-ui.js']='companion-ui.js';files['/self-model-ui.js']='self-model-ui.js';files['/companion.css']='companion.css';files['/memory-archive-ui.js']='memory-archive-ui.js';files['/memory-catalog-ui.js']='memory-catalog-ui.js';
   const uiSnapshot=snapshotUi(files,path.join(root,'ui'));
   runtime.desktopSense??=new DesktopSense({directory:runtime.dataDir,onEvent:e=>{for(const r of [hostRuntime,hostRuntime.wechat?.child])if(r&&(!e.platform||e.platform===r.platform)&&(!['qq','wechat'].includes(e.service)||e.service===r.platform))r.life.emit({kind:{recovered:'connected',disconnected:'disconnected',failed:'failed','process-started':'connected','process-stopped':'disconnected'}[e.kind],service:e.service,key:e.service+':'+e.kind+':'+e.at,reason:'本机程序观测事件'});},getServices:()=>({
     xiaoyu:{connected:!runtime.closing,busy:!!runtime.bridge?.total||!!runtime.wechat?.child?.bridge?.total,source:'小鱼运行时'},
@@ -82,7 +82,7 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
           if(route==='/api/wechat/moments/media'){json(200,readMomentMedia(url.searchParams.get('path')));return;}
           if(route==='/api/wechat/moments/images/file'){const images=hostRuntime.wechat.context().moments.images,f=url.searchParams.get('thumbnail')==='1'?await images.thumbnail(url.searchParams.get('id')):images.file(url.searchParams.get('id'));res.writeHead(200,{...headers,'Content-Type':f.mime,'Cache-Control':'private, max-age=3600'});res.end(f.bytes);return;}
           if(route==='/api/wechat/moments/images'){const m=hostRuntime.wechat.context().moments;await m.ensureImages();json(200,m.images.dashboard({query:url.searchParams.get('query')??'',category:url.searchParams.get('category')??'',offset:url.searchParams.get('offset'),limit:url.searchParams.get('limit')}));return;}
-          if(route==='/api/wechat/moments/comments'){json(200,hostRuntime.wechat.context().moments.comments.dashboard());return;}
+          if(route==='/api/wechat/moments/comments'){json(200,hostRuntime.wechat.context().moments.comments.dashboard({limit:url.searchParams.get('limit')??200,offset:url.searchParams.get('offset')??0}));return;}
           if(route==='/api/wechat/moments'){json(200,await hostRuntime.wechat.context().moments.dashboard());return;}
           if(route==='/api/notebook'){json(200,runtime.notebook.dashboard());return;}
           if(route==='/api/qzone'){json(200,hostRuntime.qzone.dashboard());return;}
@@ -101,9 +101,11 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
           if(route==='/api/social'){const io=runtime.onebot,send=runtime.platform==='wechat'?{quote:!!io?.capabilities?.nativeQuote,poke:!!io?.capabilities?.nativePoke,forward:!!io?.capabilities?.nativeForward}:io?.connected?await io.socialCapabilities():{quote:false,poke:false,forward:false};json(200,{platform:runtime.platform,receive:{quote:true,poke:true,forward:true},send,reason:send.reason??(runtime.platform==='wechat'?'当前已验收微信组件仅支持文字、图片、GIF与真实@；新增发送能力须独立验证。':null)});return;}
           if(route==='/api/dialogue'){const scope=url.searchParams.get('scope');runtime.assertScope(scope);json(200,{scope,routes:runtime.store.dialogue.diagnostics(scope)});return;}
           if(route==='/api/continuity'){json(200,runtime.store.continuity.list());return;}
+          if(route==='/api/memory-archive/versions'){const id=url.searchParams.get('id'),item=runtime.store.archive.db.prepare('SELECT scope FROM memory_archive WHERE id=?').get(id);if(!item)throw Error('记忆不存在');runtime.assertScope(item.scope);json(200,runtime.store.archive.versions(id));return;}
+          if(route==='/api/memory/catalog'){const params=Object.fromEntries(url.searchParams),scope=params.scope??'',personaId=params.personaId??'',account=String(runtime.manager?.config?.account||runtime.accountId||runtime.store.meta('lastAccount')||'');if(scope)runtime.assertScope(scope);if(personaId&&!runtime.store.persona(personaId))throw Error('人格不存在');json(200,runtime.store.catalog.page({platform:runtime.platform,account,scope,personaId,policy:s=>runtime.configPolicy(s)},params));return;}
           if(route==='/api/cognition/star-map'){json(200,memoryStarMap(runtime,Object.fromEntries(url.searchParams)));return;}
           if(route==='/api/cognition/note/versions'){const id=url.searchParams.get('id');json(200,runtime.store.db.prepare('SELECT * FROM note_revisions WHERE noteId=? ORDER BY id DESC LIMIT 50').all(id));return;}
-          if(route==='/api/cognition'){const scope=url.searchParams.get('scope')??'',personaId=url.searchParams.get('personaId')??'';if(scope)runtime.assertScope(scope);json(200,{...runtime.store.cognition.dashboard({scope,personaId}),fixedMemories:runtime.store.fixedMemories(),continuitySpaces:runtime.store.continuity.list(),learningSettings:runtime.learningQueue.settings(),learningJobs:runtime.store.db.prepare('SELECT * FROM learning_jobs ORDER BY created DESC LIMIT 100').all()});return;}
+          if(route==='/api/cognition'){const scope=url.searchParams.get('scope')??'',personaId=url.searchParams.get('personaId')??'';if(scope)runtime.assertScope(scope);json(200,{...runtime.store.cognition.dashboard({scope,personaId}),catalog:runtime.store.catalog.page({platform:runtime.platform,account:String(runtime.manager?.config?.account||runtime.accountId||runtime.store.meta('lastAccount')||''),scope,personaId,policy:s=>runtime.configPolicy(s)}),archive:runtime.store.archive.dashboard({scope,personaId}),archiveBudget:runtime.memoryConsolidation.budget(),fixedMemories:runtime.store.fixedMemories(),continuitySpaces:runtime.store.continuity.list(),learningSettings:runtime.learningQueue.settings(),learningJobs:runtime.store.db.prepare('SELECT * FROM learning_jobs ORDER BY created DESC LIMIT 100').all()});return;}
           if(route==='/api/state'){json(200,runtime.state());return;}
           if(route==='/api/speech'){json(200,runtime.speech.state());return;}
           if(route==='/api/voice'){json(200,{...runtime.voice.state(),transports:{qqOnline:!!hostRuntime.accountId,wechatOnline:!!hostRuntime.wechat.child?.onebot?.connected,wechatVoiceVerified:!!hostRuntime.wechat.child?.onebot?.capabilities?.voice}});return;}
@@ -119,6 +121,7 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
           if(route==='/api/source'){const source=runtime.store.source(Number(url.searchParams.get('id')));json(200,source??null);return;}
           const asset=/^\/api\/assets\/([-\w]+)$/.exec(route);
           if(asset){const {asset:a,bytes}=runtime.media.read(asset[1]);res.writeHead(200,{...headers,'Content-Type':a.ext==='jpg'?'image/jpeg':`image/${a.ext}`});res.end(bytes);return;}
+          if(route==='/api/wechat/moments/comments/sync'){json(405,{error:'评论同步需使用POST请求，请刷新小鱼页面后重试'});return;}
           json(404,{error:'没有此资源'});return;
         }
         if(req.method!=='POST'){json(405,{error:'不支持的请求'});return;}
@@ -143,7 +146,7 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
         if(route==='/api/wechat/moments/images/attach'){json(200,hostRuntime.wechat.context().moments.images.attach(body.draftId,body.ids??[]));return;}
         if(route==='/api/wechat/moments/images/suggest'){const m=hostRuntime.wechat.context().moments;await m.ensureImages();json(200,await m.images.suggest(body.text??'',{mood:body.mood??'',limit:body.limit??3}));return;}
         if(route==='/api/wechat/moments/comments/native'){json(200,await hostRuntime.wechat.context().moments.readNativeComments());return;}
-        if(route==='/api/wechat/moments/comments/sync'){json(200,await hostRuntime.wechat.context().moments.comments.sync({selfName:String(body.selfName??'')}));return;}
+        if(route==='/api/wechat/moments/comments/sync'){json(200,await hostRuntime.wechat.context().moments.comments.sync({selfName:String(body.selfName??''),readOnly:body.readOnly===true}));return;}
         if(route==='/api/wechat/moments/comments/inspect'){json(200,await readMomentComments(hostRuntime.wechat,{selfName:String(body.selfName??'')}));return;}
         if(route==='/api/wechat/moments/native/enable'){json(200,await hostRuntime.wechat.context().moments.nativeComments.enable(body));return;}
         if(route==='/api/wechat/moments/native/refresh'){json(200,await hostRuntime.wechat.context().moments.nativeComments.refresh());return;}
@@ -157,8 +160,9 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
         if(route==='/api/wechat/moments/inspect'){json(200,await inspectMomentsUi(hostRuntime.wechat,body));return;}
  if(route==='/api/wechat/moments/album'){json(200,await inspectMomentsAlbum(hostRuntime.wechat));return;}
         if(route==='/api/wechat/moments/plan'){json(200,hostRuntime.wechat.context().moments.configurePlan(body));return;}
-        if(route.startsWith('/api/wechat/moments/')){const service=hostRuntime.wechat.context().moments;const method={'/api/wechat/moments/draft':'draft','/api/wechat/moments/remove':'removeDraft','/api/wechat/moments/generate':'generate','/api/wechat/moments/prepare':'prepare','/api/wechat/moments/preview':'preview','/api/wechat/moments/confirm':'confirm','/api/wechat/moments/reconcile':'reconcile'}[route];if(!method)throw Error('朋友圈操作不存在');json(200,await service[method](['prepare','preview','reconcile','removeDraft'].includes(method)?body.id:body));return;}
-        if(route.startsWith('/api/notebook/')){const method={'/api/notebook/write':'write','/api/notebook/settings':'configure','/api/notebook/edit':'edit'}[route];if(!method)throw Error('日记操作不存在');json(200,await runtime.notebook[method](body));return;}
+        if(route.startsWith('/api/wechat/moments/')){const service=hostRuntime.wechat.context().moments;const method={'/api/wechat/moments/composition/cancel':'cancelComposition','/api/wechat/moments/composition/save':'saveComposition','/api/wechat/moments/composition/load':'loadComposition','/api/wechat/moments/composition/review':'reviewComposition','/api/wechat/moments/composition/publish':'publishComposition','/api/wechat/moments/draft':'draft','/api/wechat/moments/remove':'removeDraft','/api/wechat/moments/generate':'generate','/api/wechat/moments/prepare':'prepare','/api/wechat/moments/preview':'preview','/api/wechat/moments/confirm':'confirm','/api/wechat/moments/reconcile':'reconcile'}[route];if(!method)throw Error('朋友圈操作不存在');json(200,await service[method](['prepare','preview','reconcile','removeDraft'].includes(method)?body.id:body));return;}
+        if(route.startsWith('/api/memory-archive/')){const op=route.slice('/api/memory-archive/'.length),a=runtime.store.archive;if(body.scope)runtime.assertScope(body.scope);if(op==='settings')json(200,a.configure(body));else if(op==='review'){const item=a.db.prepare('SELECT scope FROM memory_archive WHERE id=?').get(body.id);if(!item)throw Error('记忆不存在');runtime.assertScope(item.scope);json(200,a.review(body));}else if(op==='queue')json(200,runtime.memoryConsolidation.queue(body));else if(op==='explain'){if(!body.scope||!body.personaId)throw Error('请选择聊天和人格');json(200,a.explain(body.scope,body.personaId,String(body.query??'').slice(0,500),body.memberId?[String(body.memberId)]:[]));}else if(op==='run')json(200,await runtime.memoryConsolidation.runNext());else if(op==='task')json(200,runtime.memoryConsolidation.control(body));else if(op==='index'){if(!body.scope||!body.personaId)throw Error('请选择聊天和人格');json(200,await a.index(body));}else throw Error('记忆操作不存在');return;}
+        if(route.startsWith('/api/notebook/')){const method={'/api/notebook/missing':'missing','/api/notebook/queue-missing':'queueMissing','/api/notebook/task':'taskControl','/api/notebook/write':'write','/api/notebook/settings':'configure','/api/notebook/remove-plan':'removePlan','/api/notebook/edit':'edit'}[route];if(!method)throw Error('日记操作不存在');json(200,await runtime.notebook[method](body));return;}
         if(route.startsWith('/api/qzone/')){const q=hostRuntime.qzone;let result;
           if(route==='/api/qzone/bind')result=body.cookies?await q.bind(body.cookies):await q.autoBind();
           else if(route==='/api/qzone/unbind')result=await q.unbind();
@@ -262,7 +266,7 @@ export async function startGui({open=true,autoConnect=true,port=0,runtime:provid
         else if(route==='/api/shared/list')json(200,runtime.sharedList(body));
         else if(route==='/api/shared/publish')json(200,runtime.sharedPublish(body));
         else if(route==='/api/shared/action')json(200,runtime.sharedAction(body));
-        else if(route==='/api/memory/preview')json(200,runtime.memoryPreview(body));
+        else if(route==='/api/memory/preview'){runtime.memoryPreview(body);await runtime.store.archive.prepareQuery(body.scope,runtime.configPolicy(body.scope).personaId,body.query);json(200,runtime.memoryPreview(body));}
         else if(route==='/api/memory/resolve')json(200,runtime.memoryResolve(body));
         else if(route==='/api/memory/maintain')json(200,runtime.memoryMaintain());
         else if(route==='/api/memory/save'){runtime.memorySave(body);json(200,{ok:true});}

@@ -34,3 +34,5 @@ test('chat library selection rejects other-chat private libraries and missing li
   try{const l=r.media.collection('qq:99:private:10');assert.throws(()=>r.saveChat('qq:99:private:11',{stickerLibraryId:l.id}),/不属于当前聊天/);assert.throws(()=>r.saveChat('qq:99:private:10',{stickerLibraryId:'missing'}),/不存在/);assert.throws(()=>r.saveDefaults({stickerLibraryId:l.id}),/共享图库/);}
   finally{await r.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test("background scheduler isolates one service failure and coalesces overlapping ticks",async()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),"background-tick-")),r=new Runtime({store:new Store(":memory:"),dataDir:dir}),seen=[];try{r.notebook.pump=async()=>{seen.push("notebook");throw Error("simulated pause")};r.life.pump=async()=>seen.push("life");r.video.pump=async()=>seen.push("video");r.learningQueue.pump=async()=>seen.push("learning");r.learningTimer._onTimeout();r.learningTimer._onTimeout();await r.backgroundTick;assert.deepEqual(seen,["notebook","life","video","learning"]);}finally{await r.close();fs.rmSync(dir,{recursive:true,force:true});}});

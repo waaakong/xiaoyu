@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
+import {startGui} from '../src/gui.js';import {Runtime} from '../src/runtime.js';import {Store} from '../src/store.js';
+test('manual comment sync uses the authenticated POST endpoint and old GET gets an actionable method error',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'xy-comment-route-')),runtime=new Runtime({store:new Store(':memory:'),dataDir:dir});let calls=0,received;
+ const gui=await startGui({open:false,autoConnect:false,runtime});
+ const original=runtime.wechat.context;runtime.wechat.context=()=>({moments:{comments:{sync:async body=>{calls++;received=body;return {added:2,replied:0,readOnly:body.readOnly}},dashboard:options=>({pagination:options})}}});
+ try{const headers={'X-Session-Token':gui.token,'Content-Type':'application/json'};assert.equal((await fetch(gui.origin+'/api/wechat/moments/comments/sync')).status,403);const wrong=await fetch(gui.origin+'/api/wechat/moments/comments/sync',{headers});assert.equal(wrong.status,405);assert.match((await wrong.json()).error,/POST/);assert.equal(calls,0);const r=await fetch(gui.origin+'/api/wechat/moments/comments/sync',{method:'POST',headers,body:JSON.stringify({readOnly:true})});assert.equal(r.status,200);assert.equal((await r.json()).added,2);assert.equal(calls,1);assert.equal(received.readOnly,true);const page=await(await fetch(gui.origin+'/api/wechat/moments/comments?offset=200&limit=50',{headers})).json();assert.deepEqual(page.pagination,{offset:'200',limit:'50'});}finally{runtime.wechat.context=original;await gui.close();fs.rmSync(dir,{recursive:true,force:true});}
+});

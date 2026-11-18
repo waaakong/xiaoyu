@@ -9,11 +9,12 @@ export class WeChatAccessibility {
     Object.assign(this,{root,enabled,python,spawnImpl,audit,timeoutMs});
     this.tail=Promise.resolve();this.active=new Set();this.closed=false;
   }
-  run(proof,action){
-    const task=this.tail.then(()=>this.operate(proof,action));
+  run(proof,action,{timeoutMs=this.timeoutMs}={}){
+    if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>28000)throw Error('控件操作时限必须大于0且不超过28秒');
+    const task=this.tail.then(()=>this.operate(proof,action,timeoutMs));
     this.tail=task.catch(()=>{});return task;
   }
-  async operate(proof,action){
+  async operate(proof,action,timeoutMs=this.timeoutMs){
     if(this.closed)throw Error('微信控件适配已停止');
     if(this.fault)throw this.fault;
     if(!this.enabled())return action({signal:new AbortController().signal,adapted:false});
@@ -40,7 +41,7 @@ export class WeChatAccessibility {
       if(!alreadyEnabled){controller.abort();readyReject(Error('微信控件适配提前结束'));}
       closedResolve(code);
     });
-    const timer=setTimeout(()=>{controller.abort();readyReject(Error('微信控件操作超时，已请求恢复'));},this.timeoutMs);
+    const timer=setTimeout(()=>{controller.abort();readyReject(Error('微信控件操作超时，已请求恢复'));},timeoutMs);
     const abortPromise=new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(Error('微信控件操作已停止，投递结果需核对')),{once:true}));
     // Install the rejection handler before readiness to avoid an orphan rejection.
     abortPromise.catch(()=>{});

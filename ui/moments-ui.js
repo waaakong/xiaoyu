@@ -1,8 +1,10 @@
+import {momentSections,pageRows,confirmMoment,syncMomentComments,commentSyncNotice} from './moments-workflow-ui.js';
 export function installMoments({api,node,button,edit,notice,viewText,showPage,getCatalog}){
   const entry=button('微信朋友圈',()=>showPage('moments',load));entry.dataset.page='moments';entry.dataset.title='微信朋友圈';document.querySelector('nav').append(entry);
   const page=node('section','page companion-page moments-page');page.id='moments';page.hidden=true;document.querySelector('main').append(page);
   const card=(title,copy)=>{const e=node('article','cognition-panel companion-card');e.append(node('h2','',title));if(copy)e.append(node('p','',copy));return e;};
   const actions=()=>node('div','actions');
+  let activeSection='compose',commentPage=0,commentFilter='all',currentData=null,currentConnection=null;
   let sequence=0,compose=null,composeAccount=null,lastResult=null,saveTimer=null,sending=false,reviewFilter='all',reviewQuery='';
   const storageKey=account=>'xy-moments-draft:'+encodeURIComponent(account||'wechat');
   const readableSize=bytes=>bytes>=1024*1024?(bytes/1024/1024).toFixed(1)+' MB':bytes>=1024?Math.round(bytes/1024)+' KB':bytes+' B';
@@ -10,7 +12,7 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
   const isAbsolute=value=>/^(?:[A-Za-z]:[\\/]|\\\\)/.test(value);
   const kindOf=value=>/[.](?:mp4|mov|mkv|mgp|mpe?g|avi|wmv|rm|rmvb)$/i.test(value)?'video':'image';
   const mediaLabel=items=>!items.length?'没有素材':items[0].kind==='video'?'1 个视频':items.length+' 张图片';
-  const reviewStatus={draft:['待审核','ready'],unstable:['已投递 · 稳定性未通过','warn'],accepted:['服务端接受 · 待核对','warn'],unknown:['结果未知 · 禁止重发','danger'],'not-submitted':['原生预检未提交','idle'],rejected:['服务端拒绝','danger'],attempting:['投递中','warn']};
+  const reviewStatus={draft:['待审核','ready'],published:['已核验发布','ready'],unstable:['已投递 · 稳定性未通过','warn'],accepted:['服务端接受 · 待核对','warn'],unknown:['结果未知 · 禁止重发','danger'],'not-submitted':['明确未提交','idle'],rejected:['服务端拒绝','danger'],attempting:['投递中','warn']};
   const reviewLabel=status=>(reviewStatus[status]??[status||'未知','idle'])[0];
   const reviewClass=status=>(reviewStatus[status]??[null,'idle'])[1];
   const reviewTime=value=>{const d=new Date(Number(value));return Number.isFinite(d.getTime())?d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'时间未知';};
@@ -25,11 +27,11 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
     const raw=Array.isArray(saved.media)?saved.media.filter(m=>m&&typeof m.path==='string'&&isAbsolute(m.path)):[];
     const kind=raw[0]?kindOf(raw[0].path):null;
     const media=(kind?raw.filter(m=>kindOf(m.path)===kind):[]).slice(0,kind==='video'?1:9).map(m=>({path:m.path,name:m.name||m.path.split(/[\\/]/).pop(),kind,size:Number(m.size)||0,dataUrl:null}));
-    compose={text:typeof saved.text==='string'?[...saved.text].slice(0,1500).join(''):'',media,privacy:saved.privacy==='public'?'public':'private',publish:false};
+    compose={draftId:saved.draftId??null,text:typeof saved.text==='string'?[...saved.text].slice(0,1500).join(''):'',media,privacy:saved.privacy==='public'?'public':'private',publish:false};
   }
   function persist(){
     if(!compose||!composeAccount)return;clearTimeout(saveTimer);saveTimer=setTimeout(()=>{
-      try{localStorage.setItem(storageKey(composeAccount),JSON.stringify({text:compose.text,privacy:compose.privacy,media:compose.media.map(({path,name,kind,size})=>({path,name,kind,size}))}));}catch{}
+      try{localStorage.setItem(storageKey(composeAccount),JSON.stringify({draftId:compose.draftId??null,text:compose.text,privacy:compose.privacy,media:compose.media.map(({path,name,kind,size})=>({path,name,kind,size}))}));}catch{}
     },180);
   }
   function clearSaved(account){try{localStorage.removeItem(storageKey(account));}catch{}}
@@ -101,7 +103,7 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
     const editor=node('div','moment-editor-card');
     const head=node('div','moment-compose-head');
     const title=node('div');
-    title.append(node('span','moment-kicker','NEW MOMENT'),node('h2','','写一条朋友圈'),node('p','footnote','像发朋友圈一样写好文字和素材，再决定只演练还是真实发布。'));
+    title.append(node('span','moment-kicker',compose.draftId?'DRAFT':'NEW MOMENT'),node('h2','',compose.draftId?'编辑朋友圈草稿':'写一条朋友圈'),node('p','footnote','像发朋友圈一样写好文字和素材，再决定只演练还是真实发布。'));
     const headTools=node('div','moment-head-tools');
     const drafts=(data.drafts??[]).filter(d=>d.status==='draft').length;
     headTools.append(node('span','moment-badge '+(canPublish?'ready':'blocked'),canPublish?'界面自动化已就绪':'界面自动化未就绪'),button('草稿箱 '+drafts,()=>document.querySelector('.moment-review')?.scrollIntoView({behavior:'smooth',block:'start'}),'quiet'));
@@ -143,12 +145,12 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
       const b=node('button','moment-privacy-option');b.type='button';b.append(node('strong','',label),node('small','',desc));b.onclick=()=>{compose.privacy=key;sync(false);persist();};privacyButtons[key]=b;privacy.append(b);
     }
     const confirm=node('label','moment-confirm');const checkbox=node('input');checkbox.type='checkbox';checkbox.checked=compose.publish;checkbox.onchange=()=>{compose.publish=checkbox.checked;sync(false);};confirm.append(checkbox,node('span','','确认现在真实发布到微信朋友圈'));
-    options.append(privacy,confirm);editor.append(options);
+    options.append(privacy);editor.append(options);
     const footer=node('div','moment-actions');
     const publishButton=button('发布到朋友圈',()=>submit(true),'primary');
     const dryButton=button('先演练，不发布',()=>submit(false),'secondary');
-    const clearButton=button('清空',()=>{if(!confirm2())return;compose.text='';compose.media=[];compose.publish=false;clearSaved(composeAccount);textarea.value='';checkbox.checked=false;sync(true);},'quiet');
-    footer.append(publishButton,dryButton,clearButton);editor.append(footer);
+    const clearButton=button('清空',()=>{if(!confirm2())return;compose.draftId=null;compose.text='';compose.media=[];compose.publish=false;clearSaved(composeAccount);textarea.value='';checkbox.checked=false;sync(true);},'quiet');
+    const saveButton=button('保存草稿',async()=>{try{const result=await api('wechat/moments/composition/save',{draftId:compose.draftId??undefined,text:compose.text,media:compose.media.map(m=>m.path),privacy:compose.privacy});compose.draftId=result.id;persist();notice('草稿已保存，未操作微信');await load();}catch(e){notice(e.message,true);}},'secondary');footer.append(publishButton,saveButton,dryButton,clearButton);editor.append(footer);
     const status=node('p','moment-publish-hint');editor.append(status);
     const resultSlot=node('div','moment-result-slot');editor.append(resultSlot);
     const preview=node('aside','moment-preview');
@@ -168,10 +170,10 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
       const has=!!compose.text.trim()||compose.media.length>0;
       previewText.textContent=compose.text.trim()||'这一刻的想法…';previewText.classList.toggle('empty',!compose.text.trim());previewMedia.hidden=!compose.media.length;previewFoot.querySelector('.moment-preview-count').textContent=mediaLabel(compose.media);
       if(media)paintMedia();
-      publishButton.disabled=!canPublish||!has||!compose.publish||sending;
-      dryButton.disabled=!canPublish||!has||sending;clearButton.disabled=sending;
-      publishButton.textContent=sending?'正在处理…':'发布到朋友圈';
-      status.textContent=!canPublish?'界面自动化未就绪，先完成微信接入与控件适配。':!has?'填写正文，或加入图片 / 视频。':compose.publish?'将真实发布到微信朋友圈；不会暂停微信收发，但微信窗口会短暂切到前台。':'勾选“确认现在真实发布”后才能发布；也可以先演练。';
+      publishButton.disabled=!canPublish||!has||sending;
+      dryButton.disabled=!canPublish||!has||sending;clearButton.disabled=sending;saveButton.disabled=!has||sending;
+      publishButton.textContent=sending?'正在处理…':'审核并发布';
+      status.textContent=!canPublish?'界面自动化未就绪，先完成微信接入与控件适配。':!has?'填写正文，或加入图片 / 视频。':compose.publish?'将真实发布到微信朋友圈；不会暂停微信收发，但微信窗口会短暂切到前台。':'先保存草稿，或审核完整内容后确认发布；也可只准备演练。';
     }
     function paintMedia(){
       grid.replaceChildren();
@@ -284,11 +286,10 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
       if(sending)return;
       if(!canPublish){notice('请先在微信接入中开启控件适配',true);return;}
       if(!compose.text.trim()&&!compose.media.length){notice('先写正文，或加入图片 / 视频',true);return;}
-      if(publish&&!compose.publish){notice('请先勾选“确认现在真实发布”',true);return;}
       sending=true;sync(false);
       try{
-        const payload={text:compose.text,media:compose.media.map(x=>x.path),privacy:compose.privacy,publish};let r=await api('wechat/moments/ui',payload);
-        if(r.canConfirmDuplicate&&window.confirm('相同内容24小时内已经发布。确定要再发布一条吗？'))r=await api('wechat/moments/ui',{...payload,confirmDuplicate:true});
+        const payload={text:compose.text,media:compose.media.map(x=>x.path),privacy:compose.privacy,publish};let r;if(publish){const saved=await api('wechat/moments/composition/save',{...payload,draftId:compose.draftId??undefined});compose.draftId=saved.id;persist();const review=await api('wechat/moments/composition/review',{draftId:saved.id});if(!await confirmMoment(review,compose.media)){await api('wechat/moments/composition/cancel',{reviewId:review.reviewId});notice('已返回编辑，草稿保留，未发布');return;}r=await api('wechat/moments/composition/publish',{reviewId:review.reviewId});}else r=await api('wechat/moments/ui',payload);
+        if(!publish&&r.canConfirmDuplicate&&window.confirm('相同内容24小时内已经发布。确定要再发布一条吗？'))r=await api('wechat/moments/ui',{...payload,confirmDuplicate:true});
         lastResult={...r,account:composeAccount,mode:publish?'publish':'dry-run'};
         if(publish&&r.published){compose.text='';compose.media=[];compose.publish=false;clearSaved(composeAccount);}
         notice(r.published?'已核验发布':r.notice??(r.canceled?'演练完成，微信里没有新动态':'操作结束'));
@@ -337,7 +338,7 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
         if([...text].length>120){const more=button('展开全文',()=>{const clamped=body.classList.toggle('clamped');more.textContent=clamped?'展开全文':'收起';},'quiet');acts.append(more);}
         acts.append(button('复制正文',()=>copyText(text),'quiet'));
         if(d.status==='draft'){
-          acts.append(button('编辑',()=>edit('编辑朋友圈草稿',[{name:'text',label:'待审核正文',type:'textarea',rows:7,max:2000,value:d.text,required:true},{name:'visibility',label:'可见范围',type:'select',options:[['public','公开（真实发布需再次确认）']],value:'public'}],async v=>{await api('wechat/moments/draft',{id:d.id,...v});await refresh();},'编辑后原确认失效。'),'quiet'));
+          acts.append(button('继续编辑 / 审核发布',async()=>{if(sending)return;try{if(compose?.text?.trim()&&compose.draftId!==d.id&&!window.confirm('载入此草稿将替换编辑区内容，是否继续？'))return;const value=await api('wechat/moments/composition/load',{draftId:d.id});const previews=await Promise.all(value.media.map(async path=>{try{const info=await api('wechat/moments/media?path='+encodeURIComponent(path));return info.base64?'data:'+info.mime+';base64,'+info.base64:null;}catch{return null;}}));compose={...value,media:value.media.map((path,index)=>({path,name:path.split(/[\\/]/).pop(),kind:kindOf(path),size:0,dataUrl:previews[index]})),publish:false};composeAccount=data.account;persist();activeSection='compose';render(currentData,currentConnection);page.querySelector('.moment-compose')?.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){notice(e.message,true);}},'primary'));
           const del=button('删除草稿',()=>removeDraft(d,del),'quiet');acts.append(del);
         }
         if(op)acts.append(button('查看投递回执',()=>viewText('朋友圈投递回执',op.result??''),'quiet'));
@@ -384,15 +385,18 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
     if(transport.canValidate)section.append(node('p','footnote','当前组件尚未完成真实回复验收。同步后可选择一条评论，核验正文并发送一次；此操作会公开回复，不会开启后台自动回复。'));
     if(p.migrationNotice)section.append(node('p','footnote',p.migrationNotice));
     const stats=node('div','moment-comment-stats');for(const [label,value]of [['动态',counts.posts??0],['评论',counts.comments??0],['待处理',counts.pending??0],['结果未知',counts.unknown??0],['模型调用',data?.usage?.calls??0],['预算Token',data?.usage?.tokens??0]])stats.append(node('span','',label+' '+value));
-    if(p.lastSyncAt)stats.append(node('span','','上次同步 '+reviewTime(p.lastSyncAt)));if(p.lastError)stats.append(node('span','moment-comment-error',p.lastError));section.append(stats);
-    const tools=node('div','moment-comment-tools');tools.append(button('立即同步',async()=>{const r=await api('wechat/moments/comments/sync');await refresh();notice('新增 '+r.added+' 条，已核验回复 '+r.replied+' 条'+(r.baseline?' · 已建立历史基线':''));},'primary'),button('回复设置',()=>openCommentPolicy(data),'secondary'));section.append(tools);
+    if(p.lastSyncAt)stats.append(node('span','','上次同步 '+reviewTime(p.lastSyncAt)));if(p.lastError)stats.append(node('span','moment-comment-error',p.lastError));section.append(stats);if(p.lastSyncInfo){const x=p.lastSyncInfo;section.append(node('p','footnote','本轮详情补查 '+x.detailReads+' 条 · 待补查 '+Math.max(x.deferredDetails??0,x.unresolvedPosts??0)+' 条 · 完整性未确认 '+(x.incompletePosts??0)+' 条'+(x.historyPending?' · 历史分页尚未结束':'')));}
+    const tools=node('div','moment-comment-tools');tools.append(button('立即同步',async()=>{const r=await syncMomentComments(api);await refresh();notice(commentSyncNotice(r));},'primary'),button('回复设置',()=>openCommentPolicy(data),'secondary'));section.append(tools);
     const posts=node('details');posts.append(node('summary','','逐条动态的范围与人格'));
     for(const post of data?.posts??[]){const row=node('div','moment-comment');row.append(node('p','',String(post.text||'媒体动态').slice(0,100)),node('small','',post.objectId?'对象 '+post.objectId:'仅界面观察 · 缺少稳定ID'));
       row.append(button('设置范围和人格',()=>edit('动态评论策略',[{name:'enabled',label:'允许此动态自动回复',type:'checkbox',value:!!post.autoReply},{name:'personaId',label:'绑定人格',type:'select',options:(getCatalog()?.personas??[]).map(p=>[p.id,p.name]),value:post.personaId??'',required:true}],async v=>{await api('wechat/moments/comments/post-policy',{postId:post.id,...v});await refresh();},'首次开启此动态会忽略已有评论。'),'quiet'));posts.append(row);
     }section.append(posts);
     const list=node('div','moment-comment-list'),filter=node('select');filter.setAttribute('aria-label','筛选评论状态');for(const [value,label]of [['all','全部评论'],['pending','待处理'],['unknown','结果未知'],['delivered','已送达'],['unverified','身份未核验']]){const o=node('option','',label);o.value=value;filter.append(o);}section.append(filter,list);
     const labels={new:'待处理',unverified:'身份未核验',ignored:'已忽略',queued:'排队',generating:'生成中',ready:'待提交',sending:'提交中',delivered:'已核验送达',failed:'未提交失败',unknown:'结果未知，禁止重发'};
-    const paint=()=>{list.replaceChildren();for(const c of data?.comments??[]){const status=c.replyStatus??c.status;if(filter.value!=='all'&&!(filter.value==='pending'?['new','queued','generating','ready'].includes(status):filter.value===status))continue;
+    const pager=node('div','moment-pager');section.append(pager);filter.value=commentFilter;
+    let nextOffset=data?.pagination?.nextOffset??null;const more=button('加载更早评论',async()=>{const r=await api('wechat/moments/comments?offset='+nextOffset+'&limit=200'),ids=new Set((data.comments??[]).map(c=>c.id));data.comments.push(...r.comments.filter(c=>!ids.has(c.id)));nextOffset=r.pagination?.nextOffset??null;more.hidden=nextOffset==null;paint();notice('已载入 '+data.comments.length+' / '+r.pagination.total+' 条评论');},'secondary');more.hidden=nextOffset==null;section.append(more);
+    if(data?.pagination&&data.pagination.total>(data.comments?.length??0))section.append(node('p','footnote','数据库已同步 '+data.pagination.total+' 条评论；下方可继续加载更早记录。'));
+    const paint=()=>{list.replaceChildren();const filtered=(data?.comments??[]).filter(c=>{const status=c.replyStatus??c.status;return filter.value==='all'||(filter.value==='pending'?['new','queued','generating','ready'].includes(status):filter.value===status);}),pagination=pageRows(filtered,commentPage,20);commentPage=pagination.page;pager.replaceChildren();const prev=button('上一页',()=>{commentPage--;paint();},'quiet'),next=button('下一页',()=>{commentPage++;paint();},'quiet');prev.disabled=commentPage===0;next.disabled=commentPage>=pagination.pages-1;pager.append(prev,node('span','','第 '+(commentPage+1)+' / '+pagination.pages+' 页 · 共 '+pagination.total+' 条'),next);for(const c of pagination.rows){const status=c.replyStatus??c.status;
       const row=node('article','moment-comment'),top=node('div','moment-comment-head');top.append(node('strong','',c.author||'访客'),node('span','',labels[status]??status));row.append(top,node('p','moment-comment-text',c.content),node('p','moment-comment-post','原帖：'+String(c.postText??'').slice(0,100)));
       if(c.replyText)row.append(node('p','moment-comment-reply','小鱼：'+c.replyText));if(c.replyError)row.append(node('small','',c.replyError));
       const acts=actions();
@@ -401,16 +405,19 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
       }
       if(status==='unknown')acts.append(button('只查原回执',async()=>{const result=await api('wechat/moments/comments/reconcile',{commentId:c.id});await refresh();notice(result.status==='delivered'?'已核验送达':'仍未确认，不会重发');},'quiet'));
       if(c.receipt)acts.append(button('查看回执',()=>viewText('评论回执',c.receipt),'quiet'));row.append(acts);list.append(row);
-    }if(!list.childElementCount)list.append(node('p','moment-review-empty','该筛选下暂无评论。'));};filter.onchange=paint;paint();return section;
+    }if(!list.childElementCount)list.append(node('p','moment-review-empty','该筛选下暂无评论。'));};filter.onchange=()=>{commentPage=0;commentFilter=filter.value;paint();};paint();return section;
   }
   function render(data,connection){
+    currentData=data;currentConnection=connection;
     const account=data.account??'';
     const caps=data.capabilities??{};
     const ready=connection?.config?.foregroundCompatibility===true;
     const canPublish=ready&&caps.text==='ui-automation';
     page.replaceChildren();
     page.append(node('h1','','微信朋友圈'),node('p','footnote','写文字、从图库或本机加图片，先在本机预览；不暂停微信收发也能发布，真实发布前手动确认。'));
-    page.append(buildCompose(data,connection,canPublish));
+    page.append(node('p','moment-workflow-summary','待审核 '+(data.drafts??[]).filter(d=>d.status==='draft').length+' · 明确未提交 '+(data.publishJobs??[]).filter(j=>j.status==='not-submitted').length+' · 待核验 '+(data.publishJobs??[]).filter(j=>j.status==='unknown').length));
+    const panels=momentSections(page,activeSection,id=>{activeSection=id;});
+    panels.compose.append(buildCompose(data,connection,canPublish),buildReview(data));
     const plan=data.plan??{},planCard=node('article','moment-plan');
     const planHead=node('div','moment-plan-head');planHead.append(node('div','', ''),node('span','moment-badge '+(plan.enabled?'ready':'idle'),plan.enabled?'已开启':'未开启'));
     planHead.firstChild.append(node('h3','','每日随机朋友圈'),node('p','',plan.enabled?'每天 '+String(plan.startHour).padStart(2,'0')+':00–'+String(plan.endHour).padStart(2,'0')+':00 随机一条 · '+(plan.visibility==='public'?'公开':'私密'):'每天在设定的时间窗口里随机发一条，默认关闭。'));
@@ -419,12 +426,13 @@ export function installMoments({api,node,button,edit,notice,viewText,showPage,ge
     if(plan.enabled&&plan.nextAt)planCard.append(node('p','footnote','下一次：'+new Date(plan.nextAt).toLocaleString()));
     if(plan.lastStatus==='published'&&plan.lastAt)planCard.append(node('p','footnote','上次发布：'+new Date(plan.lastAt).toLocaleString()));
     if(plan.lastStatus==='failed')planCard.append(node('p','footnote','上次失败：'+(plan.lastError??'未知原因')+'；计划会自动重试或顺延'));
-    planCard.append(button('设置每日随机朋友圈',()=>openPlan(plan),'secondary'));page.append(planCard);
+    planCard.append(button('设置每日随机朋友圈',()=>openPlan(plan),'secondary'));panels.records.append(planCard);
     if(lastResult&&lastResult.account===account&&lastResult.mode){/* result is already shown inside composer */ }
     const other=node('details','moment-other');other.append(node('summary','','其他方式'));
-    const otherActions=actions();otherActions.append(button('新建本地文字草稿',openLocalDraft,'quiet'),button('按人格写朋友圈',openGenerate,'quiet'));other.append(otherActions);page.append(other);
-    page.append(buildComments(data.comments));
-    if(data.publishJobs?.length){const jobs=node('article','moment-comments');jobs.append(node('h2','','发布任务'));for(const j of data.publishJobs){let r={};try{r=JSON.parse(j.result??'{}');}catch{}const row=node('div','moment-comment');row.append(node('strong','',({published:'已核验发布',unknown:'结果未知 · 禁止重发','not-submitted':'明确未提交',preparing:'准备中',submitting:'提交中'})[j.status]??j.status),node('small','','任务 '+j.id+' · '+reviewTime(j.created)));if(r.error||r.notice)row.append(node('p','',r.error??r.notice));if(j.status==='unknown')row.append(button('只核对原发布结果',async()=>{const result=await api('wechat/moments/publication/reconcile',{id:j.id});notice(result.status==='published'?'已核验发布':'仍未确认，不会重发');await refresh();},'quiet'));jobs.append(row);}page.append(jobs);}
-    page.append(buildReview(data));
+    const otherActions=actions();otherActions.append(button('新建本地文字草稿',openLocalDraft,'quiet'),button('按人格写朋友圈',openGenerate,'quiet'));other.append(otherActions);panels.compose.append(other);
+    panels.comments.append(buildComments(data.comments));
+    if(data.publishJobs?.length){const jobs=node('article','moment-comments');jobs.append(node('h2','','发布任务'));for(const j of data.publishJobs){let r={};try{r=JSON.parse(j.result??'{}');}catch{}const row=node('div','moment-comment');row.append(node('strong','',({published:'已核验发布',unknown:'结果未知 · 禁止重发','not-submitted':'明确未提交',preparing:'准备中',submitting:'提交中'})[j.status]??j.status),node('small','','任务 '+j.id+' · '+reviewTime(j.created)));if(r.error||r.notice)row.append(node('p','',r.error??r.notice));if(j.status==='unknown')row.append(button('只核对原发布结果',async()=>{const result=await api('wechat/moments/publication/reconcile',{id:j.id});notice(result.status==='published'?'已核验发布':'仍未确认，不会重发');await refresh();},'quiet'));jobs.append(row);}panels.records.append(jobs);}
+    if(data.reviews?.length){const audits=card('审核记录','保存和预览不代表发布；以关联任务的真实回执为准。');const list=node('div','moment-review-list');for(const r of data.reviews){const row=node('article','moment-comment');row.append(node('strong','',({canceled:'已返回编辑 · 未发布',expired:'已过期 · 请重新审核',ready:'待确认',invalidated:'内容修改 · 旧审核失效',submitting:'提交中',published:'已核验发布',unknown:'待核验 · 禁止重发','not-submitted':'明确未提交'})[r.status]??r.status),node('small','',reviewTime(r.created)+' · 草稿 '+r.draftId+(r.jobId?' · 任务 '+r.jobId:'')));list.append(row);}audits.append(list);panels.records.append(audits);}
+    panels.records.append(buildReview(data));
   }
 }

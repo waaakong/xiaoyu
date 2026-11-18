@@ -1,3 +1,4 @@
+import {MomentsDraftWorkflow} from './moments-draft-workflow.js';
 import {MomentsNativeService} from './moments-native-service.js';
 import {MomentsPublisher} from './moments-publish.js';
 import fs from 'node:fs';
@@ -22,7 +23,7 @@ export class MomentsClient {
 
 // Per-WeChat-account DB; does not read QQ's drafts, memory, diary or cookies.
 export class WeChatMoments {
-  constructor(runtime,{now=Date.now,client,publishUi=publishMomentUi,verifyPublish}={}){this.runtime=runtime;this.db=runtime.store.db;this.now=now;this.clientOverride=client;this.publishUi=publishUi;this.busy=false;this.closed=false;this.planTimer=null;this.planRun=null;this.planAttempts=0;this.planAttemptDate=null;this.images=new MomentsImages(runtime,{now});this.nativeComments=new MomentsNativeService(runtime,{now});this.publisher=new MomentsPublisher(runtime,{now,publish:publishUi,snapshot:()=>this.nativeComments.publicationSnapshot(),verify:verifyPublish});this.comments=new MomentsComments(runtime,{now,readComments:()=>this.nativeComments.readComments(),replyComment:(m,p)=>this.nativeComments.replyComment(m,p),readReceipt:t=>this.nativeComments.readReceipt(t),transportReady:()=>this.nativeComments.snapshot()});this.imagesReady=false;
+  constructor(runtime,{now=Date.now,client,publishUi=publishMomentUi,verifyPublish}={}){this.runtime=runtime;this.db=runtime.store.db;this.now=now;this.clientOverride=client;this.publishUi=publishUi;this.busy=false;this.closed=false;this.planTimer=null;this.planRun=null;this.planAttempts=0;this.planAttemptDate=null;this.images=new MomentsImages(runtime,{now});this.nativeComments=new MomentsNativeService(runtime,{now});this.publisher=new MomentsPublisher(runtime,{now,publish:publishUi,snapshot:()=>this.nativeComments.publicationSnapshot(),verify:verifyPublish});this.comments=new MomentsComments(runtime,{now,readComments:(_manager,options)=>this.nativeComments.readComments(options),replyComment:(m,p)=>this.nativeComments.replyComment(m,p),readReceipt:t=>this.nativeComments.readReceipt(t),transportReady:()=>this.nativeComments.snapshot()});this.imagesReady=false;
     this.db.exec(`CREATE TABLE IF NOT EXISTS moments_drafts(id TEXT PRIMARY KEY,account TEXT,text TEXT,visibility TEXT,status TEXT,created INTEGER,updated INTEGER);
       CREATE TABLE IF NOT EXISTS moments_sources(id TEXT PRIMARY KEY,scope TEXT,personaId TEXT,date TEXT,personaHash TEXT,diaryHash TEXT,diaryRefs TEXT);
       CREATE TABLE IF NOT EXISTS moments_proposals(id TEXT PRIMARY KEY,draftId TEXT,hash TEXT,packet BLOB,created INTEGER);
@@ -30,6 +31,7 @@ export class WeChatMoments {
       CREATE TABLE IF NOT EXISTS moments_operations(id TEXT PRIMARY KEY,draftId TEXT,proposalId TEXT,status TEXT,result TEXT,created INTEGER);
       CREATE TABLE IF NOT EXISTS moments_model_jobs(id TEXT PRIMARY KEY,scope TEXT,created INTEGER,estimate INTEGER,usage TEXT,status TEXT);
       CREATE TABLE IF NOT EXISTS moments_plan(id INTEGER PRIMARY KEY CHECK(id=1),enabled INTEGER DEFAULT 0,scope TEXT,personaId TEXT,startHour INTEGER DEFAULT 9,endHour INTEGER DEFAULT 22,visibility TEXT DEFAULT 'private',autoIllustrate INTEGER DEFAULT 1,maxImages INTEGER DEFAULT 1,lastDate TEXT,lastAt INTEGER,lastStatus TEXT,lastError TEXT,nextAt INTEGER,updated INTEGER);`);
+    this.workflow=new MomentsDraftWorkflow(this);this.workflow.invalidateStaleReviews();
     for(const sql of ['ALTER TABLE moments_plan ADD COLUMN autoIllustrate INTEGER DEFAULT 1','ALTER TABLE moments_plan ADD COLUMN maxImages INTEGER DEFAULT 1','ALTER TABLE moments_sources ADD COLUMN diaryRefs TEXT'])try{this.db.exec(sql);}catch{}
     this.db.exec("UPDATE moments_operations SET status='unknown' WHERE status='attempting'; UPDATE moments_drafts SET status='unknown' WHERE status='attempting'; UPDATE moments_model_jobs SET status='interrupted' WHERE status='running'");
     this.armPlan();
@@ -54,14 +56,22 @@ export class WeChatMoments {
     let images={total:0,items:[]},comments={policy:this.comments.policy(),posts:[],comments:[],counts:{posts:0,comments:0,pending:0}};
     try{images=this.images.dashboard();}catch(e){images={total:0,items:[],error:String(e.message??e)};}
     try{comments=this.comments.dashboard();}catch(e){comments={...comments,error:String(e.message??e)};}
-    return {account:this.runtime.manager?.config.account??null,native,automatic:true,plan:this.plan(),capabilities:{text:'ui-automation',images:true,video:true,audience:true,comments:{read:true,autoReply:this.comments.transportReady().ready===true,deliveryVerified:false},concurrentPublish:true},images,comments,publishJobs:this.publisher.jobs(),drafts:this.db.prepare('SELECT * FROM moments_drafts ORDER BY updated DESC LIMIT 100').all(),operations:this.db.prepare('SELECT * FROM moments_operations ORDER BY created DESC LIMIT 100').all(),generationJobs:this.db.prepare('SELECT * FROM moments_model_jobs ORDER BY created DESC LIMIT 50').all()};}
-  async publish(body={}){
-    const result=await this.publisher.execute(body);
+    return {account:this.runtime.manager?.config.account??null,native,automatic:true,plan:this.plan(),capabilities:{text:'ui-automation',images:true,video:true,audience:true,comments:{read:true,autoReply:this.comments.transportReady().ready===true,deliveryVerified:false},concurrentPublish:true},images,comments,publishJobs:this.publisher.jobs(),reviews:this.db.prepare('SELECT r.* FROM moments_ui_reviews r JOIN moments_drafts d ON d.id=r.draftId WHERE d.account=? ORDER BY r.created DESC LIMIT 100').all(this.account()),drafts:this.db.prepare('SELECT * FROM moments_drafts ORDER BY updated DESC LIMIT 100').all(),operations:this.db.prepare('SELECT * FROM moments_operations ORDER BY created DESC LIMIT 100').all(),generationJobs:this.db.prepare('SELECT * FROM moments_model_jobs ORDER BY created DESC LIMIT 50').all()};}
+  registerUiPost(body,result){
     if(result?.published===true){
       const plan=this.plan();
       try{this.comments.registerPost({text:String(body.text??''),media:Array.isArray(body.media)?body.media:[],privacy:body.privacy==='public'?'public':'private',personaId:this.comments.policy().defaultPersonaId||plan.personaId||null,objectId:result.receipt?.objectId,ownerVerified:!!result.receipt?.verified,source:'ui'});}catch(e){this.runtime.log?.('朋友圈已发布，但评论追踪登记失败：'+String(e.message??e));}
       void this.comments.sync().catch(e=>this.runtime.log?.('朋友圈评论同步失败：'+String(e.message??e)));
     }
+  }
+  cancelComposition(body){return this.workflow.cancel(body.reviewId);}
+  saveComposition(body){return this.workflow.save(body);}
+  reviewComposition(body){return this.workflow.review(body.draftId);}
+  publishComposition(body){return this.workflow.publish(body.reviewId);}
+  loadComposition(body){return this.workflow.composition(body.draftId);}
+  async publish(body={}){
+    const result=await this.publisher.execute(body);
+    this.registerUiPost(body,result);
     return result;
   }
   plan(){const d={enabled:false,scope:'',personaId:'',startHour:9,endHour:22,visibility:'private',autoIllustrate:true,maxImages:1,lastDate:null,lastAt:null,lastStatus:null,lastError:null,nextAt:null};const r=this.db.prepare('SELECT * FROM moments_plan WHERE id=1').get();return r?{...d,...r,enabled:r.enabled===1,autoIllustrate:r.autoIllustrate!==0,maxImages:Number(r.maxImages??1)}:d;}

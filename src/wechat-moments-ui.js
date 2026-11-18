@@ -59,12 +59,12 @@ async function runMomentUi(manager,req){
   fs.writeFileSync(requestFile,JSON.stringify(req,null,2),{mode:0o600});
   const run=async({signal})=>{
     fs.writeFileSync(outFile,JSON.stringify({ok:false,stage:'starting',submissionAttempted:false}));
-    try{await exec('powershell.exe',['-NoProfile','-STA','-ExecutionPolicy','Bypass','-File',path.join(root,'integrations','wechat','moments-ui.ps1'),'-Pid',String(identity.clientPid),'-Request',requestFile,'-Out',outFile],{timeout:19000,signal,windowsHide:true,encoding:'utf8',maxBuffer:32000});}catch(e){let state={};try{state=JSON.parse(fs.readFileSync(outFile,'utf8').replace(/^\uFEFF/,''));}catch{}const err=Error('朋友圈操作中止：'+(state.error??state.stage??e.code??'unknown'));err.submissionAttempted=state.submissionAttempted!==false;err.stage=state.stage;err.retryable=false;throw err;}
+    try{await exec('powershell.exe',['-NoProfile','-STA','-ExecutionPolicy','Bypass','-File',path.join(root,'integrations','wechat','moments-ui.ps1'),'-Pid',String(identity.clientPid),'-Request',requestFile,'-Out',outFile],{timeout:26500,signal,windowsHide:true,encoding:'utf8',maxBuffer:32000});}catch(e){let state={};try{state=JSON.parse(fs.readFileSync(outFile,'utf8').replace(/^\uFEFF/,''));}catch{}const err=Error('朋友圈操作中止：'+(state.error??state.stage??e.code??'unknown'));err.submissionAttempted=state.submissionAttempted!==false;err.stage=state.stage;err.retryable=false;throw err;}
     const result=JSON.parse(fs.readFileSync(outFile,'utf8').replace(/^\uFEFF/,''));
-    if(!result.ok){const error=Error('朋友圈界面操作失败：'+(result.error??result.stage??'unknown'));error.submissionAttempted=result.submissionAttempted!==false;error.stage=result.stage;error.retryable=['menu-not-found:选照片或视频','toolbar-publish-missing','discover-missing'].includes(result.error);throw error;}
+    if(!result.ok){const error=Error('朋友圈界面操作失败：'+(result.error??result.stage??'unknown'));error.submissionAttempted=result.submissionAttempted!==false;error.stage=result.stage;error.retryable=['menu-not-found:发表文字','menu-not-found:选照片或视频','toolbar-publish-missing','discover-missing'].includes(result.error);throw error;}
     return {...result,requestId:id};
   };
-  return manager.accessibility.run({client,identity},run);
+  return manager.accessibility.run({client,identity},run,{timeoutMs:28000});
 }
 
 export async function withMomentTrafficPaused(manager,task){
