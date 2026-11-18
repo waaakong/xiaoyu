@@ -4,7 +4,7 @@ import {serverMessageId} from './wechat-receipts.js';
 
 export function wechatEvent(payload,cutoff,{config,policy,onVoice=()=>{}}){
   const p=payload,c=config,fileType=6*2**32+49,quoteType=57*2**32+49,patType=62*2**32+49,forwardType=19*2**32+49;
-  if(![1,3,34,47,fileType,quoteType,patType,forwardType].includes(p?.type)||p.event!=='message.new'||p.isSend||p.talkerId===c.account||
+  if(![1,3,34,43,62,47,fileType,quoteType,patType,forwardType].includes(p?.type)||p.event!=='message.new'||p.isSend||p.talkerId===c.account||
      !validId(String(p.sessionId??''),'wechat')||!validId(String(p.talkerId??''),'wechat')||
      !Number.isFinite(Number(p.timestamp))||Number(p.timestamp)<cutoff||!String(p.rawid??p.serverId??p.localId??p.messageId??''))return null;
   const group=p.sessionId.includes('@chatroom'),scope=`wechat:${c.account}:${group?'group':'private'}:${p.sessionId}`,permissions=policy(scope);
@@ -12,13 +12,14 @@ export function wechatEvent(payload,cutoff,{config,policy,onVoice=()=>{}}){
   if(p.type===patType){if(p.pat?.actor!==p.talkerId||p.pat?.target!==c.account)return null;return pokeEvent({post_type:'notice',notice_type:'notify',sub_type:'poke',self_id:c.account,user_id:p.talkerId,target_id:p.pat.target,time:Number(p.timestamp),message_id:String(p.rawid),sender:{nickname:p.senderName??p.talkerId},...(group?{group_id:p.sessionId}:{})},'wechat');}
   const message=[];
   if(p.type===forwardType){if(!permissions.forwardRead||p.forwardedRecord?.version!==1)return null;message.push({type:'forward',data:{record:forwardRecord(p.forwardedRecord)}});}
-  if(p.type===quoteType){const ref=p.quoteReply?.reference,id=serverMessageId(ref?.messageId);if(p.quoteReply?.version!==1||!id||group&&ref.conversationId!==p.sessionId)return null;message.push({type:'reply',data:{id}});}
+  if(p.type===quoteType){const ref=p.quoteReply?.reference,id=serverMessageId(ref?.messageId);if(p.quoteReply?.version!==1||!id||group&&ref.conversationId&&ref.conversationId!==p.sessionId)return null;message.push({type:'reply',data:{id}});}
   if(p.type===34){
     if(!permissions.speechInput||!/^[a-f0-9]{64}$/.test(p.voice?.id??'')||!Number.isSafeInteger(Number(p.conversationId))||Number(p.conversationId)<=0)return null;
     onVoice(p.voice.id,{account:c.account,scope,peer:p.sessionId,sender:p.talkerId,conversationKey:`wechat:${group?'group':'private'}:${p.conversationId}`});
     message.push({type:'record',data:{file:p.voice.id}});
   }else{
     if(p.type!==forwardType&&typeof p.content==='string'&&p.content.length<=4000)message.push({type:'text',data:{text:p.content}});
+    if([43,62].includes(p.type)&&/^[a-f0-9]{64}$/.test(p.video?.id??''))message.push({type:'video',data:{file:p.video.id}});
     if([3,47].includes(p.type)&&/^[a-f0-9]{64}$/.test(p.image?.id??p.imageId??''))message.push({type:'image',data:{file:p.image?.id??p.imageId}});
     if(p.type===fileType&&/^[a-f0-9]{64}$/.test(p.file?.id??''))message.push({type:'file',data:{file:p.file.id,name:String(p.file.name??'附件').slice(0,255),size:p.file.size??null}});
   }

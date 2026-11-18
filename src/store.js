@@ -9,6 +9,8 @@ import {createHash} from 'node:crypto';
 import {Cognition} from './cognition.js';
 import {SharedMemory} from './shared-memory.js';
 import {LivingMemory} from './living-memory.js';
+import {MemoryArchive} from './memory-archive.js';
+import {MemoryCatalog} from './memory-catalog.js';
 import {DatabaseSync} from 'node:sqlite';
 import {memoryLine} from './memory-tiers.js';
 import {sqliteUtcToMs} from './time-context.js';
@@ -38,7 +40,7 @@ export class Store {
     for(const column of ['format','keySet','packRef','digest'])if(!this.db.prepare('PRAGMA table_info(libraries)').all().some(c=>c.name===column))this.db.exec("ALTER TABLE libraries ADD COLUMN "+column+" TEXT DEFAULT ''");
     if(!this.db.prepare('PRAGMA table_info(assets)').all().some(c=>c.name==='semanticKey'))this.db.exec("ALTER TABLE assets ADD COLUMN semanticKey TEXT DEFAULT ''");
     this.db.prepare("INSERT OR IGNORE INTO libraries(id,name,description) VALUES('local','本地素材','原有图片和表情，完整保留')").run();
-    this.living=new LivingMemory(this);this.shared=new SharedMemory(this);this.continuity=new Continuity(this);this.cognition=new Cognition(this);this.emotion=new Emotion(this);this.dialogue=new Dialogue(this);this.chatState=new ChatState(this);
+    this.living=new LivingMemory(this);this.shared=new SharedMemory(this);this.continuity=new Continuity(this);this.cognition=new Cognition(this);this.archive=new MemoryArchive(this);this.catalog=new MemoryCatalog(this);this.emotion=new Emotion(this);this.dialogue=new Dialogue(this);this.chatState=new ChatState(this);
   }
   once(id) {
     this.db.prepare('DELETE FROM events WHERE created < ?').run(Date.now()-86400000);

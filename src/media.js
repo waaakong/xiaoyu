@@ -22,8 +22,9 @@ export async function imageInfo(bytes){
 export async function imageInputs(bytes){
   const m=await imageInfo(bytes),pages=m.pages??1;
   const inputs=[];for(const page of pages>1?[0,Math.floor(pages/2)]:[0]){
-    const img=await sharp(bytes,{page,pages:1,limitInputPixels:20000000}).rotate().resize({width:1024,height:1024,fit:'inside',withoutEnlargement:true}).jpeg({quality:78}).toBuffer();
-    inputs.push({type:'image',url:'data:image/jpeg;base64,'+img.toString('base64'),detail:'auto'});
+    const img=await sharp(bytes,{page,pages:1,limitInputPixels:20000000}).rotate().flatten({background:'#b8bec8'}).resize({width:1024,height:1024,fit:'inside',withoutEnlargement:true}).png().toBuffer();
+    const png=img.length<=MAX_IMAGE,encoded=png?img:await sharp(img).jpeg({quality:92}).toBuffer();
+    inputs.push({type:'image',url:(png?'data:image/png;base64,':'data:image/jpeg;base64,')+encoded.toString('base64'),detail:'auto'});
   }return inputs;
 }
 export class Media {

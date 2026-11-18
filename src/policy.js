@@ -16,16 +16,17 @@ export function normalize(event,config){
   const hasForward=event.message.some(m=>m.type==='forward');
   const social=event.socialEvent??null;if(social?.kind==='poke'&&!policy.pokeResponse)return null;
   const hasImages=event.message.some(m=>['image','mface'].includes(m.type));
+  const hasVideo=event.message.some(m=>m.type==='video');
   const hasAudio=event.message.some(m=>m.type==='record');
   const face=event.message.filter(m=>m.type==='face').map(m=>`[QQ表情${String(m.data?.id).slice(0,6)}]`).join('');
-  if(!clean&&!hasImages&&!face&&!hasAudio&&!hasForward)return null;
-  return {scope,memberScope,user,account,group,policy,event,at,word,hasImages,hasAudio,hasForward,social,text:clean||face||(hasForward?'[用户发送了合并转发记录]':hasAudio?'[用户发送了语音]':'[用户发送了图片]'),speaker:JSON.stringify({id:user,name:String(event.sender?.card||event.sender?.nickname||user).slice(0,60)})};
+  if(!clean&&!hasImages&&!hasVideo&&!face&&!hasAudio&&!hasForward)return null;
+  return {scope,memberScope,user,account,group,policy,event,at,word,hasImages,hasVideo,hasAudio,hasForward,social,text:clean||face||(hasVideo?'[用户发送了视频]':hasForward?'[用户发送了合并转发记录]':hasAudio?'[用户发送了语音]':'[用户发送了图片]'),speaker:JSON.stringify({id:user,name:String(event.sender?.card||event.sender?.nickname||user).slice(0,60)})};
 }
 export function isAwake(r,followups,now=Date.now(),quoteSelf=false,naturalAt=new Map(),random=Math.random){
   if(!groupReplyGate(r,{quoteSelf,quoteOther:r.quoteOther}).allow)return false;
   if(r.social?.kind==='poke')return true;
   if(!r.group||r.at||r.word||quoteSelf||(followups.get(r.memberScope)??0)>now)return true;
-  if(r.policy.wakeMode!=='hybrid'||r.hasImages||r.hasAudio||r.hasForward||/^\//.test(r.text)||r.text.length<4)return false;
+  if(r.policy.wakeMode!=='hybrid'||r.hasImages||r.hasVideo||r.hasAudio||r.hasForward||/^\//.test(r.text)||r.text.length<4)return false;
   if(now-(naturalAt.get(r.scope)??0)<r.policy.naturalCooldownSeconds*1000)return false;
   return random()<r.policy.naturalProbability;
 }

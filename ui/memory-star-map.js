@@ -8,8 +8,8 @@ export function installMemoryStarMap({api,node,button,notice,showPage,getCatalog
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','icon');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.innerHTML='<path d="m6 6 12 2-7 11L6 6m5 13 8-4M6 6l-2 9"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="11" cy="19" r="2"/><circle cx="4" cy="15" r="1"/><circle cx="19" cy="15" r="1"/>';entry.append(svg,node('span','nav-label','记忆星图'));nav.insertBefore(entry,anchor);
 
   const page=node('section','page star-workspace');page.id='starMap';page.hidden=true;document.querySelector('main').append(page);
-  let graph=null,selected=null,view='galaxy',scope='',personaId='',query='',until='',cursor=0,seq=0,detailSeq=0,pending,detailAbort,initialized=false,timer,debounce,pollBusy=false,dirty=false;
-  const enabled=new Set(['fixed','fact','event','note','topic','plan']);
+  let graph=null,selected=null,view='galaxy',scope='',personaId='',query='',until='',cursor=0,runId='',seq=0,detailSeq=0,pending,detailAbort,initialized=false,timer,debounce,pollBusy=false,dirty=false;
+  const enabled=new Set(['fixed','fact','event','note','topic','plan','relationship']);
 
   const heading=node('div','star-heading'),title=node('div');title.append(node('p','star-eyebrow','记忆与成长'),node('h1','','记得的事，彼此相连'),node('p','star-intro','循着时间与光，找到人、故事和它的来处。'));heading.append(title);
   const shortcuts=node('div','star-shortcuts');for(const [id,label]of [['memories','记忆库'],['notebook','记事本']])shortcuts.append(button(label,()=>document.querySelector('nav [data-page="'+id+'"]')?.click(),'quiet'));heading.append(shortcuts);page.append(heading);
@@ -18,7 +18,7 @@ export function installMemoryStarMap({api,node,button,notice,showPage,getCatalog
   const scopeSelect=node('select'),personaSelect=node('select'),search=node('input'),date=node('input');scopeSelect.setAttribute('aria-label','星图聊天范围');personaSelect.setAttribute('aria-label','星图人格');search.type='search';search.placeholder='搜索记忆、人或内容';search.setAttribute('aria-label','搜索星图');search.maxLength=200;date.type='date';date.setAttribute('aria-label','记忆截至日期');
   const field=(label,control,cls='')=>{const l=node('label','star-field '+cls);l.append(node('span','',label),control);return l;};
   filter.append(field('聊天范围',scopeSelect),field('人格',personaSelect),field('搜索',search,'star-search'),field('截至日期',date));
-  const clear=button('重置筛选',()=>{scope='';personaId='';query='';until='';cursor=0;scopeSelect.value='';personaSelect.value='';search.value='';date.value='';for(const type of enabledTypes)enabled.add(type);syncTypes();refresh({clear:true});},'quiet');filter.append(clear);page.append(filter);
+  const clear=button('重置筛选',()=>{scope='';personaId='';query='';until='';runId='';cursor=0;scopeSelect.value='';personaSelect.value='';search.value='';date.value='';for(const type of enabledTypes)enabled.add(type);syncTypes();refresh({clear:true});},'quiet');filter.append(clear);page.append(filter);
 
   const controlbar=node('div','star-controlbar'),types=node('div','star-type-filter'),viewbar=node('div','star-view-switch');types.setAttribute('aria-label','记忆类型');viewbar.setAttribute('aria-label','星图显示方式');
   const enabledTypes=[...enabled],typeButtons=new Map();
@@ -26,7 +26,7 @@ export function installMemoryStarMap({api,node,button,notice,showPage,getCatalog
   function syncTypes(){for(const [type,b]of typeButtons)b.setAttribute('aria-pressed',String(enabled.has(type)));}syncTypes();
   const modes=new Map();for(const [id,label]of [['galaxy','银河'],['relations','关系'],['list','列表']]){const b=button(label,()=>setView(id),'quiet');b.setAttribute('aria-pressed',String(id===view));modes.set(id,b);viewbar.append(b);}controlbar.append(types,viewbar);page.append(controlbar);
 
-  const status=node('div','star-status'),statusText=node('span','','准备读取本机记忆'),refreshButton=button('刷新',()=>refresh({clear:true}),'quiet');status.setAttribute('role','status');status.append(statusText,refreshButton);page.append(status);
+  const status=node('div','star-status'),statusText=node('span','','准备读取本机记忆'),refreshButton=button('刷新',()=>refresh({clear:true}),'quiet');status.setAttribute('role','status');const recallButton=button('最近一次召回',()=>{if(runId){runId='';recallButton.textContent='最近一次召回';}else if(graph?.latestRecall){runId=graph.latestRecall.id;recallButton.textContent='退出召回筛选';}else{notice('当前范围暂无召回记录');return;}cursor=0;refresh({clear:true});},'quiet');status.append(statusText,recallButton,refreshButton);page.append(status);
 
   const layout=node('div','star-layout'),visual=node('div','star-visual'),canvas=node('canvas','star-canvas'),list=node('div','star-record-list'),empty=node('div','star-empty'),hover=node('div','star-hover');canvas.tabIndex=0;canvas.setAttribute('role','img');canvas.setAttribute('aria-label','记忆银河，拖动旋转，滚轮靠近，点选星体查看记忆；也可切换列表操作');list.hidden=true;list.setAttribute('aria-label','记忆列表');empty.hidden=true;hover.hidden=true;visual.append(canvas,list,empty,hover);
 
@@ -48,7 +48,7 @@ export function installMemoryStarMap({api,node,button,notice,showPage,getCatalog
   const map=createStarCanvas(canvas,{onSelect:choose,onHover:n=>{hover.hidden=!n;hover.textContent=n?.title??'';}});map.rotate(rotate.checked);
   const options=(select,items,value)=>{select.replaceChildren();for(const [v,label]of items){const o=node('option','',label);o.value=v;select.append(o);}select.value=value;};
   function catalogue(){const c=getCatalog();options(scopeSelect,[['','全部本机聊天'],...c.contacts.items.map(x=>[x.scope,(x.kind==='group'?'群 · ':'私聊 · ')+x.name])],scope);options(personaSelect,[['','全部人格'],...c.personas.map(p=>[p.id,p.name])],personaId);}
-  function args(extra={}){return new URLSearchParams({scope,personaId,query,until,types:[...enabled].join(','),cursor:String(cursor),...extra}).toString();}
+  function args(extra={}){return new URLSearchParams({scope,personaId,query,until,runId,types:[...enabled].join(','),cursor:String(cursor),...extra}).toString();}
 
   function clearSelection(){selected=null;detailSeq++;detailAbort?.abort();map.select('');renderDetail();renderList();}
   function clearData(){graph=null;selected=null;detailSeq++;detailAbort?.abort();map.setData({nodes:[],edges:[]});map.select('');list.replaceChildren();renderDetail();count.textContent='读取中';statsText.textContent='';live.textContent='● 正在对齐星轨';previous.disabled=true;next.disabled=true;}
@@ -67,7 +67,7 @@ export function installMemoryStarMap({api,node,button,notice,showPage,getCatalog
 
   function renderGraph(){
     map.setData(graph);const stats=graph.stats??{},total=stats.total??graph.total??0,people=stats.people??0,chats=stats.chats??0,span=stats.spanDays??0;
-    count.textContent=total+' 颗记忆';statsText.textContent=people+' 个人物 · '+chats+' 个聊天 · 跨度 '+span+' 天'+(stats.pinned?' · '+stats.pinned+' 条固定':'');live.textContent='● 每 3 秒呼吸同步';scopeCaption.textContent=(graph.platform==='wechat'?'微信':'QQ')+' · '+graph.scopeLabel;
+    count.textContent=total+(graph.recallFilter?' 个召回项':' 颗记忆');statsText.textContent=people+' 个人物 · '+chats+' 个聊天 · 跨度 '+span+' 天'+(stats.pinned?' · '+stats.pinned+' 条固定':'');live.textContent='● 每 3 秒呼吸同步';scopeCaption.textContent=(graph.platform==='wechat'?'微信':'QQ')+' · '+graph.scopeLabel;
     const label=graph.total?'当前显示 '+(graph.offset+1)+'–'+(graph.offset+graph.visible)+' / '+graph.total+' 条':'当前范围还没有匹配记录';
     statusText.textContent=label+(graph.unassigned?' · '+graph.unassigned+' 条未标注人格':'')+' · 本机只读';
     previous.disabled=!cursor;next.disabled=graph.nextCursor==null;pageLabel.textContent=graph.total?'第 '+(Math.floor(cursor/500)+1)+' 页':'';
@@ -97,7 +97,7 @@ export function installMemoryStarMap({api,node,button,notice,showPage,getCatalog
     detail.append(node('h2','',n.title||'未命名记忆'),node('p','star-detail-copy',n.body??n.summary??''));
     if(n.loading)detail.append(node('p','star-detail-tip','正在核验来源与读取范围…'));
     const meta=node('dl','star-detail-meta');
-    for(const [label,value]of [['归属',n.scopeLabel||(n.scope??'')||(n.type==='fixed'?'当前平台全局设定':'当前平台')],['人格',n.personaId==='*'?'全部人格':n.personaName??(getCatalog().personas.find(p=>p.id===n.personaId)?.name||'未标注人格')],['记录日期',n.created?.slice(0,10)||'未记录'],['星体重量',n.weight==null?'—':Number(n.weight).toFixed(2)],['沉淀',n.ageDays==null?'—':n.ageDays+' 天'],['确认',n.confirmations??0],['状态',n.status??'导航节点'],['版本',n.version==null?'未记录':'#'+n.version]]){meta.append(node('dt','',label),node('dd','',value));}
+    for(const [label,value]of [['归属',n.scopeLabel||(n.scope??'')||(n.type==='fixed'?'当前平台全局设定':'当前平台')],['人格',n.personaId==='*'?'全部人格':n.personaName??(getCatalog().personas.find(p=>p.id===n.personaId)?.name||'未标注人格')],['记录日期',n.created?new Date(n.created.replace(' ','T')+(/Z$|[+]\d\d:\d\d$/.test(n.created)?'':'Z')).toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'}):'未记录'],['星体重量',n.weight==null?'—':Number(n.weight).toFixed(2)],['召回次数',n.recallCount??0],['最近召回',n.lastRecall??'暂无'],['证据性质',n.authority==='interpretation'?'人工审核的归纳':n.authority==='declaration'?'本人明确陈述':'原有记录'],['沉淀',n.ageDays==null?'—':n.ageDays+' 天'],['确认',n.confirmations??0],['状态',n.status??'导航节点'],['版本',n.version==null?'未记录':'#'+n.version]]){meta.append(node('dt','',label),node('dd','',value));}
     detail.append(meta);
     if(n.access&&n.access!=='local')detail.append(node('p','star-access',n.access==='shared'?'来自已授权的逐条共享':'来自已连接的续聊空间'));
     if(n.sources){const sources=node('div','star-sources');sources.append(node('h3','','来源原文'));if(!n.sources.length)sources.append(node('p','','本机录入或固定设定，没有聊天原文来源。'));for(const s of n.sources){const disclosure=node('details'),summary=node('summary');summary.textContent='#'+s.id+' · '+s.created;disclosure.append(summary,node('p','',s.text));sources.append(disclosure);}detail.append(sources);}
@@ -106,7 +106,7 @@ export function installMemoryStarMap({api,node,button,notice,showPage,getCatalog
 
   async function choose(n){
     if(!n){clearSelection();return;}
-    const request=++detailSeq;detailAbort?.abort();const record=/^(fact|note|fixed):/.test(n.id);selected={...n,loading:record};map.select(n.id);renderDetail();renderList();
+    const request=++detailSeq;detailAbort?.abort();const record=/^(fact|note|fixed|archive|trace):/.test(n.id);selected={...n,loading:record};map.select(n.id);renderDetail();renderList();
     if(!record)return;
     detailAbort=new AbortController();
     try{const result=await api('cognition/star-map?'+args({node:n.id}),undefined,{signal:detailAbort.signal});if(request!==detailSeq||page.hidden)return;selected=result.detail;renderDetail();}
@@ -125,7 +125,7 @@ export function installMemoryStarMap({api,node,button,notice,showPage,getCatalog
   }
   document.addEventListener('fullscreenchange',()=>{if(document.fullscreenElement===visual)layout.classList.add('is-fullscreen');else layout.classList.remove('is-fullscreen');});
 
-  scopeSelect.onchange=()=>{scope=scopeSelect.value;cursor=0;refresh({clear:true});};personaSelect.onchange=()=>{personaId=personaSelect.value;cursor=0;refresh({clear:true});};date.onchange=()=>{until=date.value;cursor=0;refresh({clear:true});};
+  scopeSelect.onchange=()=>{scope=scopeSelect.value;runId='';recallButton.textContent='最近一次召回';cursor=0;refresh({clear:true});};personaSelect.onchange=()=>{personaId=personaSelect.value;runId='';recallButton.textContent='最近一次召回';cursor=0;refresh({clear:true});};date.onchange=()=>{until=date.value;cursor=0;refresh({clear:true});};
   search.oninput=()=>{query=search.value;cursor=0;clearTimeout(debounce);pending?.abort();clearData();debounce=setTimeout(()=>refresh({clear:true}),220);};
 
   async function open(){await styled;catalogue();return showPage('starMap',async({isCurrent})=>{initialized=true;return refresh({clear:!graph||dirty,isCurrent});});}

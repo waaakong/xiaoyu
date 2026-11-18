@@ -73,16 +73,18 @@ export class MomentsComments {
   }
   post(id){return this.db.prepare('SELECT * FROM moments_posts WHERE id=?').get(id)??null;}
   replyFor(id){return this.db.prepare('SELECT * FROM moments_replies WHERE commentId=?').get(id)??null;}
-  dashboard(){
+  dashboard({limit=200,offset=0}={}){
+    limit=Number(limit);offset=Number(offset);if(!Number.isInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(offset)||offset<0)throw Error('评论分页无效');
     const account=this.account();
     const posts=this.db.prepare('SELECT p.*,(SELECT count(*) FROM moments_comments c WHERE c.postId=p.id) commentCount FROM moments_posts p WHERE account=? ORDER BY publishedAt DESC LIMIT 100').all(account);
-    const comments=this.db.prepare('SELECT c.*,p.text postText,r.text replyText,r.status replyStatus,r.error replyError,r.receipt FROM moments_comments c JOIN moments_posts p ON p.id=c.postId LEFT JOIN moments_replies r ON r.commentId=c.id WHERE p.account=? ORDER BY c.observedAt DESC LIMIT 200').all(account);
-    return {policy:this.policy(),transport:this.transportReady(),posts,comments,counts:{posts:posts.length,comments:comments.length,pending:comments.filter(c=>c.status==='new'&&!c.replyStatus).length,unknown:comments.filter(c=>c.replyStatus==='unknown').length},usage:this.usage()};
+    const comments=this.db.prepare('SELECT c.*,p.text postText,r.text replyText,r.status replyStatus,r.error replyError,r.receipt FROM moments_comments c JOIN moments_posts p ON p.id=c.postId LEFT JOIN moments_replies r ON r.commentId=c.id WHERE p.account=? ORDER BY c.observedAt DESC,c.id DESC LIMIT ? OFFSET ?').all(account,limit,offset);
+    const counts=this.db.prepare("SELECT count(*) comments,coalesce(sum(CASE WHEN c.status='new' AND r.id IS NULL THEN 1 ELSE 0 END),0) pending,coalesce(sum(CASE WHEN r.status='unknown' THEN 1 ELSE 0 END),0) unknown FROM moments_comments c JOIN moments_posts p ON p.id=c.postId LEFT JOIN moments_replies r ON r.commentId=c.id WHERE p.account=?").get(account);counts.posts=this.db.prepare('SELECT count(*) n FROM moments_posts WHERE account=?').get(account).n;
+    return {policy:this.policy(),transport:this.transportReady(),posts,comments,counts,pagination:{limit,offset,total:counts.comments,nextOffset:offset+comments.length<counts.comments?offset+comments.length:null},usage:this.usage()};
   }
   usage(){const start=this.now()-86400000;return this.db.prepare('SELECT count(*) calls,coalesce(sum(estimate),0) tokens FROM moments_comment_calls WHERE at>=?').get(start);}
   async selfName(){try{const rows=await this.runtime.onebot?.contacts?.();return rows?.find(c=>c.id===this.account())?.name??'';}catch{return '';}}
-  async sync({selfName='',automatic=false}={}){
-    if(this.closed||automatic&&this.runtime.running===false)return {skipped:'stopped'};if(this.syncing)return this.syncing;
+  async sync({selfName='',automatic=false,readOnly=false}={}){
+    if(this.closed||automatic&&this.runtime.running===false)return {skipped:'stopped'};if(this.syncing)return readOnly?{skipped:'busy',added:0,replied:0,notice:'已有评论同步正在执行，请稍后刷新'}:this.syncing;
     const account=this.account();if(!account)throw Error('请先核验微信账号');
     const revision=this.policy().revision;
     this.syncing=(async()=>{try{
@@ -112,9 +114,9 @@ export class MomentsComments {
         }
       }
       if(baseline)this.db.prepare("UPDATE moments_comments SET status='ignored' WHERE status='new' AND postId IN (SELECT id FROM moments_posts WHERE account=?)").run(account);
-      if(this.policy().revision===revision&&account===this.account())this.savePolicy({lastSyncAt:this.now(),lastError:null,...(baseline?{baselineAt:this.now(),baselineAccount:account}:{})});
-      if(!baseline)for(const c of this.db.prepare("SELECT c.* FROM moments_comments c JOIN moments_posts p ON p.id=c.postId WHERE p.account=? AND c.status='new' AND NOT EXISTS(SELECT 1 FROM moments_replies r WHERE r.commentId=c.id) ORDER BY c.createdAt LIMIT 100").all(account))if(await this.maybeReply(c,c.postId))replied++;
-      return {added,replied,baseline,posts:result?.posts?.length??0};
+      if(this.policy().revision===revision&&account===this.account())this.savePolicy({lastSyncAt:this.now(),lastError:result.coverage?.partial?'本轮为分批同步，仍有动态或评论待补查':null,lastSyncInfo:result.coverage??null,...(baseline?{baselineAt:this.now(),baselineAccount:account}:{})});
+      if(!baseline&&!readOnly)for(const c of this.db.prepare("SELECT c.* FROM moments_comments c JOIN moments_posts p ON p.id=c.postId WHERE p.account=? AND c.status='new' AND NOT EXISTS(SELECT 1 FROM moments_replies r WHERE r.commentId=c.id) ORDER BY c.createdAt LIMIT 100").all(account))if(await this.maybeReply(c,c.postId))replied++;
+      return {added,replied,baseline,readOnly,coverage:result.coverage??null,posts:result?.posts?.length??0};
     }catch(e){this.markError(e);throw e;}finally{this.syncing=null;}})();return this.syncing;
   }
   eligible(c,post,p,excludeCurrent=false){

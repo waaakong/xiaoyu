@@ -1,4 +1,5 @@
 export const starTypes={
+  relationship:['关系表达','#eeb8ce'],
   fixed:['固定','#ffd696'],
   fact:['事实','#9ee8dc'],
   event:['经历','#b2ccff'],
@@ -21,8 +22,8 @@ const easeOutCubic=x=>1-Math.pow(1-x,3);
 const rgbOf=hex=>{const s=String(hex||'#cfe9df').replace('#','');return [parseInt(s.slice(0,2),16)||0,parseInt(s.slice(2,4),16)||0,parseInt(s.slice(4,6),16)||0].join(',');};
 const stamp=value=>String(value??'').replace(' ','T').replace(/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)$/,'$1Z');
 const timeOf=value=>{const n=Date.parse(stamp(value));return Number.isFinite(n)?n:0;};
-const recordTypes=new Set(['fixed','fact','event','note','topic','plan']);
-const PAL={fixed:'255,214,150',fact:'158,232,220',event:'178,204,255',note:'255,170,212',topic:'201,184,255',plan:'255,214,150',person:'143,230,210',chat:'159,184,216',persona:'185,162,255',center:'236,226,255'};
+const recordTypes=new Set(['fixed','fact','event','note','topic','plan','relationship']);
+const PAL={relationship:'238,184,206',fixed:'255,214,150',fact:'158,232,220',event:'178,204,255',note:'255,170,212',topic:'201,184,255',plan:'255,214,150',person:'143,230,210',chat:'159,184,216',persona:'185,162,255',center:'236,226,255'};
 const FALLBACK='216,206,255';
 
 export function createStarCanvas(canvas,{onSelect=()=>{},onHover=()=>{}}={}){
@@ -202,7 +203,7 @@ export function createStarCanvas(canvas,{onSelect=()=>{},onHover=()=>{}}={}){
       for(const s of list){
         let best=null,bd=Infinity;
         for(const p of prev){const dx=p.x-s.x,dy=p.y-s.y,dz=p.z-s.z,d=dx*dx+dy*dy+dz*dz;if(d<bd){bd=d;best=p;}}
-        if(best&&bd<9){(groupEdges.get(type)||groupEdges.set(type,[]).get(type)).push({a:best.id,b:s.id,label:'同组'});}
+        if(best&&bd<9){(groupEdges.get(type)||groupEdges.set(type,[]).get(type)).push({a:best.id,b:s.id,label:'视觉同组（非事实关系）'});}
         prev.push(s);
       }
     }

@@ -225,3 +225,15 @@
   .moment-path{flex-basis:100%}
 }
 @media(prefers-reduced-motion:reduce){.moment-text-wrap,.moment-remove{transition:none!important}}
+.moment-workflow-tabs{position:sticky;top:0;z-index:8;display:flex;flex-wrap:wrap;gap:8px;padding:12px;margin-bottom:18px;border:1px solid var(--border, #8ab3bd40);border-radius:16px;background:var(--panel, #203942d9);backdrop-filter:blur(24px)}
+.moment-workflow-tabs button{flex:1 1 150px;min-height:42px;border-radius:10px;white-space:normal}
+.moment-workflow-tabs button[aria-selected=true]{background:var(--accent, #76c8d1);color:var(--accent-ink, #10252b)}
+.moment-workflow-panel[hidden]{display:none!important}.moment-workflow-panel{display:grid;gap:20px;min-width:0}
+.moment-comment-list,.moment-review-list{max-height:65vh;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.moment-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;font-variant-numeric:tabular-nums}
+.moment-final-review{box-sizing:border-box;width:min(700px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:1px solid var(--border, #8ab3bd50);border-radius:20px;padding:24px;background:var(--panel, #203942f2);color:var(--text, #e7f1f4);backdrop-filter:blur(28px)}
+.moment-final-review::backdrop{background:#08151cb3;backdrop-filter:blur(6px)}.moment-final-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}.moment-final-media{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px}.moment-final-media figure{margin:0;min-width:0}.moment-final-media img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:10px}.moment-final-media figcaption{font-size:12px;overflow-wrap:anywhere}.moment-final-review .actions{position:sticky;bottom:0;padding-top:16px;background:inherit}
+
+.moment-workflow-tabs button{background:transparent;color:inherit;border:1px solid #91b7c43d}.moment-workflow-tabs button[aria-selected=true]{background:#84c9d62e;color:inherit;border-color:#84c9d68c}.moments-page .moment-compose,.moments-page .moment-review{scroll-margin-top:90px}
+
+@media(max-width:600px){.moments-page .moment-compose,.moments-page .moment-review{scroll-margin-top:150px}.moment-final-review .actions{display:flex;flex-wrap:wrap}.moment-workflow-tabs button{flex-basis:120px}}

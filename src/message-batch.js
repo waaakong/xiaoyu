@@ -10,18 +10,19 @@ export function batchParts(entry,pending,{absorb=false}={}){
  for(const next of pending){if(next===entry||next.absorbed)continue;if(!batchable(entry,next))break;
   const added=[...(next.carry??[]),next].filter(x=>!parts.includes(x)),all=[...parts,...added];
   const images=all.reduce((n,x)=>n+((x.raw?.event??x.r.event)?.message??[]).filter(s=>['image','mface'].includes(s.type)).length,0);
-  if(all.length>8||images>2||all.reduce((n,x)=>n+(x.raw?.text??x.r.text).length,0)>4000||next.receivedAt-parts[0].receivedAt>batchLimits(entry.r.policy).max)break;
+  const videos=all.reduce((n,x)=>n+((x.raw?.event??x.r.event)?.message??[]).filter(s=>s.type==='video').length,0);
+  if(all.length>8||images>2||videos>1||all.reduce((n,x)=>n+(x.raw?.text??x.r.text).length,0)>4000||next.receivedAt-parts[0].receivedAt>batchLimits(entry.r.policy).max)break;
   if(absorb)next.absorbed=true;parts.push(...added);
  }return [...new Set(parts)];
 }
 export async function waitBatch(entry,pending,signal,{now=Date.now,wait=sleep}={}){
  const p=entry.r.policy;if(p.mergeQueued===false||p.rhythmMode==='instant'||/^\//u.test(entry.r.text))return 0;
  const started=now(),limits=batchLimits(p);
- while(true){signal?.throwIfAborted();const parts=batchParts(entry,pending()),last=Math.max(...parts.map(x=>x.receivedAt)),first=Math.min(...parts.map(x=>x.receivedAt)),hasImage=parts.some(x=>x.r.hasImages),end=Math.min(first+limits.max,last+(hasImage?limits.media:limits.text)),left=end-now();if(left<=0)break;await wait(Math.min(left,50),null,{signal});}
+ while(true){signal?.throwIfAborted();const parts=batchParts(entry,pending()),last=Math.max(...parts.map(x=>x.receivedAt)),first=Math.min(...parts.map(x=>x.receivedAt)),hasImage=parts.some(x=>x.r.hasImages||x.r.hasVideo),end=Math.min(first+limits.max,last+(hasImage?limits.media:limits.text)),left=end-now();if(left<=0)break;await wait(Math.min(left,50),null,{signal});}
  return now()-started;
 }
 export function applyBatch(entry,parts){
- const r=entry.r;r.text=parts.map(x=>x.raw?.text??x.r.text).join('\n');r.event={...r.event,message:parts.flatMap(x=>(x.raw?.event??x.r.event).message)};r.hasImages=parts.some(x=>x.r.hasImages);r.turnParts=parts.map(x=>({id:x.rowId,text:x.raw?.text??x.r.text}));r.mediaSourceIds=parts.flatMap(x=>(x.raw?.event??x.r.event).message.filter(s=>['image','mface'].includes(s.type)).map(()=>x.rowId));return r;
+ const r=entry.r;r.text=parts.map(x=>x.raw?.text??x.r.text).join('\n');r.event={...r.event,message:parts.flatMap(x=>(x.raw?.event??x.r.event).message)};r.hasImages=parts.some(x=>x.r.hasImages);r.hasVideo=parts.some(x=>x.r.hasVideo);r.turnParts=parts.map(x=>({id:x.rowId,text:x.raw?.text??x.r.text}));r.mediaSourceIds=parts.flatMap(x=>(x.raw?.event??x.r.event).message.filter(s=>['image','mface'].includes(s.type)).map(()=>x.rowId));return r;
 }
 export function naturalGate(policy,receivedAt,signal,{now=Date.now,random=Math.random,wait=sleep,assertFresh=()=>{},state=()=>null,mode=()=> 'casual',timing={}}={}){
  const enabled=()=>policy.naturalDelay!==false&&policy.rhythmMode!=='instant'&&mode()!=='task';let packets=0,firstDone=false;

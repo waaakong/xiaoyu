@@ -22,6 +22,12 @@ public class W {
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")] static extern bool IsChild(IntPtr parent,IntPtr child);
+ [StructLayout(LayoutKind.Sequential)] struct GUIINFO { public uint size,flags; public IntPtr active,focus,capture,menuOwner,moveSize,caret; public RECT rect; }
+ [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread,ref GUIINFO info);
+ public static bool FilenameFocused(IntPtr edit){var g=new GUIINFO{size=(uint)Marshal.SizeOf(typeof(GUIINFO))};return edit!=IntPtr.Zero&&GetGUIThreadInfo(0,ref g)&&(g.focus==edit||IsChild(edit,g.focus));}
+ [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr SendMessageTimeout(IntPtr h,uint message,UIntPtr count,System.Text.StringBuilder text,uint flags,uint timeout,out UIntPtr result);
+ public static string ReadEditText(IntPtr edit){var text=new System.Text.StringBuilder(32768);UIntPtr result;return SendMessageTimeout(edit,0x000D,(UIntPtr)text.Capacity,text,2,250,out result)==IntPtr.Zero?null:text.ToString();}
  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a,uint b,bool f);
  [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr h);
@@ -30,6 +36,7 @@ public class W {
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool SetWindowText(IntPtr h, string t);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+ public static string NativeClass(IntPtr h){var s=new System.Text.StringBuilder(256);GetClassName(h,s,s.Capacity);return s.ToString();}
  [DllImport("user32.dll")] public static extern void mouse_event(uint f,uint x,uint y,uint d,UIntPtr e);
  public struct RECT{public int L,T,R,B;}
  static bool IsMain(IntPtr h){ var s=new System.Text.StringBuilder(256); GetClassName(h,s,256); var c=s.ToString(); return c=="mmui::MainWindow"||c=="Qt51514QWindowIcon"; }
@@ -39,6 +46,13 @@ public class W {
  public static void HideTray(uint pid){EnumWindows((h,l)=>{uint p;GetWindowThreadProcessId(h,out p);if(p==pid){var s=new System.Text.StringBuilder(256);GetClassName(h,s,256);if(s.ToString().IndexOf("TrayIcon",StringComparison.OrdinalIgnoreCase)>=0){ShowWindow(h,0);}}return true;},IntPtr.Zero);}
  public static void Click(int x,int y){ SetCursorPos(x,y); mouse_event(2,0,0,0,UIntPtr.Zero); mouse_event(4,0,0,0,UIntPtr.Zero); }
  public static void RightClick(int x,int y){ SetCursorPos(x,y); mouse_event(8,0,0,0,UIntPtr.Zero); mouse_event(16,0,0,0,UIntPtr.Zero); }
+ [StructLayout(LayoutKind.Sequential)] public struct KEYINPUT { public ushort vk,scan; public uint flags,time; public UIntPtr extra; }
+ [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int x,y; public uint data,flags,time; public UIntPtr extra; }
+ [StructLayout(LayoutKind.Explicit)] public struct INPUTDATA { [FieldOffset(0)] public KEYINPUT key; [FieldOffset(0)] public MOUSEINPUT mouse; }
+ [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public INPUTDATA data; }
+ [DllImport("user32.dll",SetLastError=true)] static extern uint SendInput(uint count,INPUT[] input,int size);
+ public static INPUT[] UnicodeInputs(string text){var rows=new INPUT[text.Length*2];for(int i=0;i<text.Length;i++){rows[i*2]=new INPUT{type=1,data=new INPUTDATA{key=new KEYINPUT{scan=text[i],flags=4}}};rows[i*2+1]=new INPUT{type=1,data=new INPUTDATA{key=new KEYINPUT{scan=text[i],flags=6}}};}return rows;}
+ public static void TypeUnicode(string text){var rows=UnicodeInputs(text);if(SendInput((uint)rows.Length,rows,Marshal.SizeOf(typeof(INPUT)))!=(uint)rows.Length)throw new InvalidOperationException("file-keyboard-input-incomplete");}
 }
 '@
 $utf8=New-Object System.Text.UTF8Encoding($false)
@@ -54,6 +68,7 @@ $selfName=[string]$req.selfName
 $result=[ordered]@{ok=$false;stage='init';published=$false;submissionAttempted=$false;canceled=$false;replied=$false;textSet=$false;mediaCount=$media.Count;privacy=$privacy;notes=@()}
 $createdCompose=$false
 function Save(){ [IO.File]::WriteAllText($Out,($result|ConvertTo-Json -Depth 5 -Compress),$utf8) }
+Save
 function I([double]$v){ if([double]::IsNaN($v) -or [double]::IsInfinity($v)){return 0}; return [int]$v }
 $hwnd=[W]::Find([uint32]$TargetPid)
 $result.targetPid=$TargetPid
@@ -69,6 +84,7 @@ $hwnd=[W]::Find([uint32]$TargetPid)
 if($hwnd -ne [IntPtr]::Zero){ $root=[System.Windows.Automation.AutomationElement]::FromHandle($hwnd) }
 [void][W]::HideTray([uint32]$TargetPid)
 function ByName([string]$name){
+ try{ $handle=[W]::Find([uint32]$TargetPid);if($handle -ne [IntPtr]::Zero){$script:root=[System.Windows.Automation.AutomationElement]::FromHandle($handle)} }catch{}
  $list=@()
  $sources=@($root,[System.Windows.Automation.AutomationElement]::RootElement)
  $nameCond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$name)
@@ -142,6 +158,9 @@ function Panel(){ return $root.FindFirst([System.Windows.Automation.TreeScope]::
 function Dialog(){ $c=New-Object System.Windows.Automation.AndCondition((New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty,'#32770')),(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$TargetPid))); return [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$c) }
 function CancelCompose(){
  for($i=0;$i -lt 6;$i++){
+  # A visibility chooser can cover the editor and disable its Cancel button.
+  # Escape only dismisses that owned, unsubmitted overlay; never presses Publish.
+  if($i -eq 0){[System.Windows.Forms.SendKeys]::SendWait('{ESC}');Start-Sleep -Milliseconds 150}
   $fd=Dialog; if($fd -ne $null){ try{$fd.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close(); Start-Sleep -Milliseconds 600}catch{}; continue }
   $d=ByName '不保留'; if($d.Count -gt 0){ ClickEl $d[0].e; Start-Sleep -Milliseconds 600; continue }
   $p=Panel; if($p -ne $null){ $c=$p.FindFirst([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'取消'))); if($c -ne $null){ ClickEl $c; Start-Sleep -Milliseconds 600; continue } }
@@ -149,6 +168,22 @@ function CancelCompose(){
  }
 }
 function ClickMenu([string]$name){ $until=[DateTime]::UtcNow.AddSeconds(3);do{$m=ByName $name;if($m.Count -gt 0){ClickEl $m[0].e;return};Start-Sleep -Milliseconds 150}while([DateTime]::UtcNow -lt $until);throw ('menu-not-found:'+$name) }
+function OpenPublishEntry([string]$name){
+ for($attempt=0;$attempt -lt 2;$attempt++){
+  $result.stage='publish-menu';$result.notes+=('menu-attempt:'+($attempt+1));Save
+  $until=[DateTime]::UtcNow.AddSeconds(2);$items=@()
+  do{$items=@(ByName '发表' | Where-Object {$_.e.Current.ClassName -eq 'mmui::XTabBarItem'});if($items.Count -gt 0){break};Start-Sleep -Milliseconds 150}while([DateTime]::UtcNow -lt $until)
+  if($items.Count -eq 0){throw 'toolbar-publish-missing'}
+  if($attempt -gt 0){[System.Windows.Forms.SendKeys]::SendWait('{ESC}');Start-Sleep -Milliseconds 150}
+  $control=$items[0].e;$pattern=$null;$opened=$false
+  if($attempt -gt 0 -and $control.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)){ $pattern.Invoke();$opened=$true }
+  if(-not $opened){$bounds=$control.Current.BoundingRectangle;[W]::RightClick((I ($bounds.X+$bounds.Width/2)),(I ($bounds.Y+$bounds.Height/2)))}
+  $until=[DateTime]::UtcNow.AddSeconds(2)
+  do{$matches=@(ByName $name);if($matches.Count -gt 0){ClickEl $matches[0].e;return};Start-Sleep -Milliseconds 150}while([DateTime]::UtcNow -lt $until)
+  $result.notes+=('expected-menu-count:'+(@(ByName $name).Count));Save
+ }
+ throw ('menu-not-found:'+$name)
+}
 function FileDialog(){
  $c=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty,'#32770')
  $all=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants,$c)
@@ -162,78 +197,117 @@ function FileDialog(){
  }
  return $null
 }
-function FileDialogOpen([string]$payload){
- $fd=$null; for($i=0;$i -lt 20;$i++){ $fd=FileDialog; if($fd -ne $null){break}; Start-Sleep -Milliseconds 200 }
- if($fd -eq $null){
-  $tw=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
-  for($i=0;$i -lt $tw.Count;$i++){ $w=$tw.Item($i); if(-not $w.Current.IsOffscreen){ $result.notes += ('win|'+$w.Current.ClassName+'|'+$w.Current.Name+'|pid='+$w.Current.ProcessId) } }
-  throw 'file-dialog-missing'
- }
- [W]::ForceForeground([IntPtr]$fd.Current.NativeWindowHandle)
- Start-Sleep -Milliseconds 500
- $edit=$null; $bestY=-1
- $edits=$fd.FindAll([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty,'Edit')))
- for($j=0;$j -lt $edits.Count;$j++){ $cand=$edits.Item($j); $r=$cand.Current.BoundingRectangle; $chh=0; try{ $chh=[IntPtr]$cand.Current.NativeWindowHandle }catch{}; $result.notes += ('ed|'+$cand.Current.ClassName+'|'+$cand.Current.AutomationId+'|'+(I $r.X)+','+(I $r.Y)+','+(I $r.Width)+'x'+(I $r.Height)+'|off='+$cand.Current.IsOffscreen+'|h='+$chh); if((I $r.Width) -gt 100 -and -not $cand.Current.IsOffscreen -and (I $r.Y) -gt $bestY){ $bestY=(I $r.Y); $edit=$cand } }
- $set=$false; $vp=$null
- if($edit -ne $null){ try{ $edit.SetFocus(); Start-Sleep -Milliseconds 200 }catch{} }
- $result.notes += ('edit-found|'+($edit -ne $null))
- if($edit -ne $null){ $result.notes += ('edit-class|'+$edit.Current.ClassName+'|edit-aid|'+$edit.Current.AutomationId) }
- $eh=0; try{ $eh=[IntPtr]$edit.Current.NativeWindowHandle }catch{}
- $result.notes += ('edit-hwnd|'+$eh)
- if($eh -ne 0){
-  $chain=@($edit)
-  try{ $p1=[System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($edit); if($p1 -ne $null){ $chain += $p1; $p2=[System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($p1); if($p2 -ne $null){ $chain += $p2 } } }catch{}
-  foreach($ce in $chain){ try{ $ch=[IntPtr]$ce.Current.NativeWindowHandle; if($ch -ne 0){ [void][W]::SetWindowText($ch,$payload); $result.notes += ('settext|'+$ce.Current.ClassName+'|'+$ch) } }catch{}; $now=''; try{ $nsb=New-Object System.Text.StringBuilder 1024; [void][W]::GetWindowText([IntPtr]$edit.Current.NativeWindowHandle,$nsb,1024); $now=$nsb.ToString() }catch{}; if($now -eq $payload){break} }
-  Start-Sleep -Milliseconds 300
- }
- $wt=''; if($eh -ne 0){ try{ $wsb=New-Object System.Text.StringBuilder 1024; [void][W]::GetWindowText($eh,$wsb,1024); $wt=$wsb.ToString() }catch{} }
- $result.notes += ('hwnd-text|'+$wt)
- if($wt -eq $payload){ $set=$true }
- if($vp -eq $null -and $edit -ne $null){ try{ [void]$edit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$vp) }catch{} }
- $before=''
- if($vp -ne $null){ try{ $before=[string]$vp.Current.Value }catch{} }
- $result.notes += ('value-before|'+$before)
- if($vp -ne $null){ try{ $vp.SetValue($payload); Start-Sleep -Milliseconds 300 }catch{ $result.notes += ('setvalue-error|'+$_.Exception.Message) } }
- $after1=''; if($vp -ne $null){ try{ $after1=[string]$vp.Current.Value }catch{} }
- $result.notes += ('value-after-set|'+$after1)
- if($after1 -eq $payload){$set=$true}
- $fdH=[IntPtr]$fd.Current.NativeWindowHandle
- if(-not $set){
-  [W]::ForceForeground($fdH)
-  Start-Sleep -Milliseconds 500
-  try{ ClickEl $edit }catch{ try{ $edit.SetFocus() }catch{} }
-  Start-Sleep -Milliseconds 400
-  [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150
-  [System.Windows.Forms.SendKeys]::SendWait($payload); Start-Sleep -Milliseconds 700
-  $after2=''; if($eh -ne 0){ try{ $ksb=New-Object System.Text.StringBuilder 1024; [void][W]::GetWindowText($eh,$ksb,1024); $after2=$ksb.ToString() }catch{} }
-  $result.notes += ('value-after-keys|'+$after2)
-  if($after2 -eq $payload){$set=$true}
-  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Start-Sleep -Milliseconds 900
-  if(-not [W]::IsWindow($fdH)){ return }
- }
- if(-not $set){ $result.notes += ('path-unconfirmed|'+$payload); throw 'file-path-unconfirmed' }
- $open=$null
- $els=$fd.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
- for($k=0;$k -lt $els.Count;$k++){ $e=$els.Item($k); if($e.Current.Name -like '打开*'){ $open=$e; break } }
- if($open -eq $null){throw 'open-button-missing'}
- $fdH=[IntPtr]$fd.Current.NativeWindowHandle
- ClickEl $open
- for($i=0;$i -lt 60;$i++){ Start-Sleep -Milliseconds 150; if(-not [W]::IsWindow($fdH)){break} }
- if([W]::IsWindow($fdH)){
-  $all=$fd.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
-  for($i=0;$i -lt [Math]::Min($all.Count,30);$i++){ $e=$all.Item($i); $result.notes += (($e.Current.ControlType.ProgrammaticName)+'|'+$e.Current.ClassName+'|'+$e.Current.AutomationId+'|'+$e.Current.Name+'|off='+$e.Current.IsOffscreen) }
-  throw 'file-dialog-stuck'
+function GetMomentMediaPreviewCount($panel){
+ $cells=0;$hasGrid=$false;$images=0
+ $all=$panel.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+ foreach($e in $all){try{
+  $class=[string]$e.Current.ClassName
+  if($class -in @('mmui::PublishImageGridCell','mmui::PublishImageAddGridCell')){$hasGrid=$true}
+  $r=$e.Current.BoundingRectangle
+  if($e.Current.IsOffscreen -or $r.Width -lt 48 -or $r.Height -lt 48){continue}
+  if($class -eq 'mmui::PublishImageGridCell'){$cells++}
+  elseif($e.Current.ControlType -eq [System.Windows.Automation.ControlType]::Image){$images++}
+ }catch{}}
+ # Qt exposes thumbnails as ListItems; the separate Add cell is not a picture.
+ # Prefer the grid's image cells over nested image nodes to prevent double counts.
+ if($hasGrid){return $cells};return $images
 }
- Start-Sleep -Milliseconds 900
+function GetMomentPrivacyRows($panel){
+ $rows=$panel.FindAll([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty,'mmui::PublishPrivacyView')))
+ return @($rows | Where-Object {-not $_.Current.IsOffscreen -and [string]$_.Current.ClassName -eq 'mmui::PublishPrivacyView'})
+}
+function GetMomentPrivacySummary($panel){
+ $rows=@(GetMomentPrivacyRows $panel);if($rows.Count -ne 1){return ''}
+ $values=@(ItemNames $rows[0] | Where-Object {$_ -in @('公开','私密')} | Select-Object -Unique)
+ if($values.Count -eq 1){return [string]$values[0]};return ''
+}
+function GetMomentPrivacyOptions([string]$label){
+ # The editor's public/private summary has the same name as a real option.
+ # Never treat that summary text as an actionable radio choice.
+ return @(ByName $label | Where-Object {$_.e.Current.IsEnabled -and -not $_.e.Current.IsOffscreen -and ($_.e.Current.ControlType -eq [System.Windows.Automation.ControlType]::RadioButton -or [string]$_.e.Current.ClassName -eq 'mmui::PublishPrivacySelection')})
+}
+function GetMomentPublishButton($panel){
+ $all=$panel.FindAll([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'发表')))
+ $candidates=@($all | Where-Object {$_.Current.Name -eq '发表' -and $_.Current.IsEnabled -and -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0})
+ $buttons=@($candidates | Where-Object {$_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button})
+ if($buttons.Count -gt 0){$candidates=$buttons}
+ if($candidates.Count -ne 1){throw 'publish-button-not-ready'}
+ return $candidates[0]
+}
+function ConvertToMomentFilePayload([string[]]$paths){
+ if($paths.Count -lt 1 -or $paths.Count -gt 9){throw 'file-count-invalid'}
+ $quoted=@();foreach($file in $paths){if([string]::IsNullOrWhiteSpace($file) -or $file.IndexOfAny([char[]]@([char]0,[char]10,[char]13,[char]34)) -ge 0){throw 'file-path-invalid'};$quoted+='"'+$file.Replace('/','\')+'"'}
+ return ($quoted -join ' ')
+}
+function FileDialogOpen([string]$payload){
+ $fd=$null;$until=[DateTime]::UtcNow.AddSeconds(3)
+ do{$fd=FileDialog;if($fd -ne $null){break};Start-Sleep -Milliseconds 120}while([DateTime]::UtcNow -lt $until)
+ if($fd -eq $null){throw 'file-dialog-missing'}
+ $fdH=[IntPtr]$fd.Current.NativeWindowHandle
+ [W]::ForceForeground($fdH);Start-Sleep -Milliseconds 150
+ if([W]::GetForegroundWindow() -ne $fdH){throw 'file-dialog-focus-unconfirmed'}
+ # Use the filename control, never a file-list rename edit or the address bar.
+ $candidates=@();$edits=$fd.FindAll([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty,'Edit')))
+ for($j=0;$j -lt $edits.Count;$j++){
+  $e=$edits.Item($j);$r=$e.Current.BoundingRectangle
+  if($e.Current.IsOffscreen -or $r.Width -lt 100){continue}
+  $parent=[System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($e)
+  if([string]$e.Current.AutomationId -eq '1148' -or ($parent -ne $null -and [string]$parent.Current.AutomationId -eq '1148')){$candidates+=$e}
+ }
+ if($candidates.Count -ne 1){throw 'file-name-control-unverified'}
+ $edit=$candidates[0];$vp=$null;$set=$false
+ if($edit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$vp)){
+  try{$vp.SetValue($payload);Start-Sleep -Milliseconds 100;$set=([string]$vp.Current.Value -eq $payload)}catch{}
+ }
+ if(-not $set){
+  # WM_SETTEXT can change GetWindowText while the common dialog's own value stays
+  # empty. Real Unicode input updates the shell's filename model and handles
+  # Chinese, spaces, parentheses and SendKeys metacharacters without a clipboard.
+  ClickEl $edit;try{$edit.SetFocus()}catch{$result.notes+='file-uia-focus-unavailable'};Start-Sleep -Milliseconds 100
+  if([W]::GetForegroundWindow() -ne $fdH){throw 'file-dialog-focus-lost'}
+  if(-not [W]::FilenameFocused([IntPtr]$edit.Current.NativeWindowHandle)){throw 'file-name-focus-unconfirmed'}
+  [System.Windows.Forms.SendKeys]::SendWait('^a');[W]::TypeUnicode($payload)
+  # GetWindowText does not retrieve another process's edit control contents.
+  # Read the actual edit through bounded WM_GETTEXT, after input has settled.
+  $value='';$until=[DateTime]::UtcNow.AddMilliseconds(1200)
+  do{
+   if($vp -ne $null){try{$value=[string]$vp.Current.Value}catch{}}
+   if($value -ne $payload){$value=[W]::ReadEditText([IntPtr]$edit.Current.NativeWindowHandle)}
+   $set=($value -eq $payload);if($set){break};Start-Sleep -Milliseconds 100
+  }while([DateTime]::UtcNow -lt $until)
+  $result.notes+='file-name-unicode-input';$result.notes+=('file-name-readback-length:'+([string]$value).Length+';expected:'+$payload.Length)
+ }
+ if(-not $set){throw 'file-path-unconfirmed'}
+ $result.notes+='file-name-confirmed';Save
+ $open=$null;$openCandidates=@()
+ $all=$fd.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+ foreach($e in $all){
+  try{if($e.Current.IsOffscreen -or -not $e.Current.IsEnabled){continue}
+   $name=[string]$e.Current.Name;$type=$e.Current.ControlType
+   $nativeDefault=([string]$e.Current.AutomationId -eq '1' -and [W]::NativeClass([IntPtr]$e.Current.NativeWindowHandle) -eq 'Button')
+   if($name -in @('打开(O)','打开(&O)','打开','Open','Open(&O)') -and ($type -eq [System.Windows.Automation.ControlType]::Button -or $type -eq [System.Windows.Automation.ControlType]::SplitButton -or $nativeDefault)){$openCandidates+=$e}
+  }catch{}
+ }
+ $result.notes+=('file-open-candidates:'+$openCandidates.Count)
+ if($openCandidates.Count -ne 1){
+  foreach($e in $all){try{if($e.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -or $e.Current.ControlType -eq [System.Windows.Automation.ControlType]::SplitButton -or ([string]$e.Current.Name).StartsWith('打开')){$result.notes+=('file-action:'+($e.Current.ControlType.ProgrammaticName)+'|'+[string]$e.Current.AutomationId+'|'+[string]$e.Current.Name+'|enabled='+$e.Current.IsEnabled+'|off='+$e.Current.IsOffscreen)}}catch{}}
+  throw 'open-button-missing'
+ }
+ $open=$openCandidates[0]
+ # Open imports media into the editor, it never publishes the moment.
+ $invoke=$null;if($open.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$invoke)){$invoke.Invoke()}else{ClickEl $open}
+ $until=[DateTime]::UtcNow.AddSeconds(4)
+ do{if(-not [W]::IsWindow($fdH)){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $until)
+ if([W]::IsWindow($fdH)){throw 'file-dialog-stuck'}
+ $result.notes+='file-dialog-import-complete';Save
 }
 function ComposeSignature($p){$names=@();$all=$p.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition);for($i=0;$i -lt $all.Count -and $i -lt 400;$i++){try{if(-not $all[$i].Current.IsOffscreen){$value='';$pattern=$null;if($all[$i].TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)){$value=[string]$pattern.Current.Value};$names+=([string]$all[$i].Current.AutomationId+'|'+[string]$all[$i].Current.Name+'|'+$value)}}catch{}};$h=[Security.Cryptography.SHA256]::Create();try{return [BitConverter]::ToString($h.ComputeHash([Text.Encoding]::UTF8.GetBytes(($names -join "`n")))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}}
-function WaitButton([string]$name){$until=[DateTime]::UtcNow.AddSeconds(3);do{$b=@(ByName $name | Where-Object {$_.e.Current.IsEnabled});if($b.Count -gt 1){throw ('ambiguous-button:'+$name)};if($b.Count -eq 1){return $b[0].e};Start-Sleep -Milliseconds 150}while([DateTime]::UtcNow -lt $until);return $null}
+function WaitButton([string]$name){$until=[DateTime]::UtcNow.AddSeconds(3);do{$b=@(ByName $name | Where-Object {$_.e.Current.IsEnabled});$buttons=@($b | Where-Object {$_.e.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button});if($buttons.Count -gt 0){$b=$buttons};if($b.Count -gt 1){throw ('ambiguous-button:'+$name)};if($b.Count -eq 1){return $b[0].e};Start-Sleep -Milliseconds 150}while([DateTime]::UtcNow -lt $until);return $null}
 try{
  if([string]$req.phase -eq 'commit'){
   $p=Panel;if($p -eq $null){throw 'prepared-panel-missing'}
   if((ComposeSignature $p) -ne [string]$req.composeSignature){throw 'prepared-content-changed'}
-  $btn=$p.FindFirst([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'发表')))
-  if($btn -eq $null -or -not $btn.Current.IsEnabled){throw 'publish-button-not-ready'}
+  $btn=GetMomentPublishButton $p
   $result.stage='submitting';$result.submissionAttempted=$true;Save
   ClickEl $btn
   $result.stage='submitted';$result.ok=$true;Save;exit 0
@@ -400,21 +474,24 @@ try{
   Start-Sleep -Milliseconds 1800
   $result.replied=$false;$result.ok=$true;$result.stage='unknown';$result.notes+="UI text is not a verified delivery receipt";Save;exit 0
  }
+ if((Panel) -ne $null){throw 'compose-already-open:请先保存或关闭微信现有朋友圈编辑窗口'}
+ $result.stage='discover';Save
   $disc=ByName '发现'; for($i=0;$i -lt 20 -and $disc.Count -eq 0;$i++){ Start-Sleep -Milliseconds 500; [void][W]::SetForegroundWindow($hwnd); $disc=ByName '发现' }
  if($disc.Count -eq 0){throw 'discover-missing'}; ClickEl $disc[0].e; Start-Sleep -Milliseconds 700
+ $result.stage='timeline';Save
  $mom=ByName '朋友圈'; if($mom.Count -eq 0){throw 'moments-missing'}; ClickEl $mom[0].e; Start-Sleep -Milliseconds 900
- $pubList=@(ByName '发表' | Where-Object { $_.e.Current.ClassName -eq 'mmui::XTabBarItem' })
- if($pubList.Count -eq 0){throw 'toolbar-publish-missing'}
- $r=$pubList[0].e.Current.BoundingRectangle; [W]::RightClick((I ($r.X+$r.Width/2)),(I ($r.Y+$r.Height/2))); Start-Sleep -Milliseconds 650
  if($media.Count -gt 0){
-  $result.stage='media'; ClickMenu '选照片或视频';$createdCompose=$true
-  $payload=($media | ForEach-Object { '"'+($_ -replace '/','\')+'"' }) -join ' '
+  $result.stage='media';Save; OpenPublishEntry '选照片或视频';$createdCompose=$true
+  $result.stage='media';Save
+  $payload=ConvertToMomentFilePayload $media
   FileDialogOpen $payload
  }else{
-  $result.stage='text'; ClickMenu '发表文字';$createdCompose=$true
+  $result.stage='text';Save; OpenPublishEntry '发表文字';$createdCompose=$true
  }
- Start-Sleep -Milliseconds 500
- $panel=Panel; if($panel -eq $null){throw 'compose-panel-missing'}
+ $result.stage='editor';Save
+ $panel=$null;$until=[DateTime]::UtcNow.AddSeconds(2)
+ do{$panel=Panel;if($panel -ne $null){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $until)
+ if($panel -eq $null){throw 'compose-panel-missing'}
  $createdCompose=$true
  $edit=$panel.FindFirst([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)))
  if($edit -eq $null){throw 'editor-missing'}
@@ -422,24 +499,57 @@ try{
  $vp.SetValue($text); $result.textSet=$true; Start-Sleep -Milliseconds 300
  if([string]$vp.Current.Value -ne $text){throw 'editor-text-mismatch'}
  if($privacy -eq 'private' -or $privacy -eq 'public'){
-  $result.stage='privacy'
-  $pv=ByName '谁可以看   '; if($pv.Count -eq 0){$pv=ByName '谁可以看'}
-  if($pv.Count -eq 0){throw 'privacy-missing'}
-  ClickEl $pv[0].e; Start-Sleep -Milliseconds 600
+  $result.stage='privacy';Save
   $label=if($privacy -eq 'private'){'私密'}else{'公开'}
-  $opt=@(ByName $label | Where-Object { $_.e.Current.ControlType.ProgrammaticName -eq 'ControlType.RadioButton' })
-  if($opt.Count -eq 0){$opt=ByName $label}
-  if($opt.Count -eq 0){throw ('privacy-option-missing:'+$label)}
-  ClickEl $opt[0].e; Start-Sleep -Milliseconds 350
-  $selection=$null; if($opt[0].e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$selection)){if(-not $selection.Current.IsSelected){throw 'privacy-not-selected'}}else{throw 'privacy-selection-unverified'}
-  $ok=WaitButton '确定'; if($ok -eq $null){throw 'privacy-confirm-missing'}
-  ClickEl $ok; Start-Sleep -Milliseconds 300
+  $current=GetMomentPrivacySummary $panel
+  $result.notes+=('privacy-initial-summary:'+$current)
+  if($current -ne $label){
+   $rows=@(GetMomentPrivacyRows $panel)
+   if($rows.Count -ne 1){throw 'privacy-row-unverified'}
+   ClickEl $rows[0]
+   $opt=@();$until=[DateTime]::UtcNow.AddSeconds(2)
+   do{$opt=@(GetMomentPrivacyOptions $label);if($opt.Count -gt 0){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $until)
+   if($opt.Count -ne 1){throw 'privacy-option-not-ready'}
+   $option=$opt[0].e;$selection=$null;$activated=$false
+   if($option.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$selection)){
+    try{$selection.Select();$activated=$selection.Current.IsSelected}catch{}
+   }
+   if(-not $activated){
+    if($option.Current.IsKeyboardFocusable){
+     try{$option.SetFocus();[System.Windows.Forms.SendKeys]::SendWait(' ');$activated=$true;$result.notes+='privacy-keyboard-action'}catch{}
+    }
+    if(-not $activated){ClickEl $option;$result.notes+='privacy-option-action'}
+   }
+   # Some Qt builds confirm the choice immediately; others keep an owned chooser.
+   Start-Sleep -Milliseconds 150
+   $stillOpen=@(GetMomentPrivacyOptions $label)
+   if($stillOpen.Count -gt 0){
+    $ok=WaitButton '确定';if($ok -eq $null){throw 'privacy-confirm-missing'}
+    ClickEl $ok
+   }
+   $until=[DateTime]::UtcNow.AddSeconds(2)
+   do{$panel=Panel;$current=if($panel -ne $null){GetMomentPrivacySummary $panel}else{''};$stillOpen=@(GetMomentPrivacyOptions $label);if($current -eq $label -and $stillOpen.Count -eq 0){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $until)
+   if($stillOpen.Count -gt 0){throw 'privacy-chooser-still-open'}
+  }else{$result.notes+='privacy-already-correct'}
+  $result.notes+=('privacy-summary:'+$current)
+  if($current -ne $label){throw 'privacy-summary-unverified'}
  }
- if([string]$req.phase -eq 'prepare'){
+ # The cancel-only rehearsal must validate the same media state as real prepare.
+ if([string]$req.phase -eq 'prepare' -or -not $publish){
+  $result.stage='verify-media';Save
   $panel=Panel;if($panel -eq $null){throw 'compose-panel-missing'}
-  $previewCount=0;$imgs=$panel.FindAll([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Image)));for($i=0;$i -lt $imgs.Count;$i++){try{$r=$imgs[$i].Current.BoundingRectangle;if(-not $imgs[$i].Current.IsOffscreen -and $r.Width -ge 48 -and $r.Height -ge 48){$previewCount++}}catch{}}
-  if($previewCount -ne $media.Count){throw 'media-preview-not-ready'}
-  $result.prepared=$true;$result.composeSignature=ComposeSignature $panel;$result.ok=$true;$result.stage='prepared';Save;exit 0
+  $previewCount=0;$until=[DateTime]::UtcNow.AddMilliseconds(1500)
+  do{$previewCount=GetMomentMediaPreviewCount $panel;if($previewCount -eq $media.Count){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $until)
+  $result.mediaPreviewCount=$previewCount;Save
+  if($previewCount -ne $media.Count){
+   $diagnostic=$panel.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition);$count=0
+   foreach($e in $diagnostic){try{$r=$e.Current.BoundingRectangle;if(-not $e.Current.IsOffscreen -and $r.Width -ge 48 -and $r.Height -ge 48){$result.notes+=('media-control:'+($e.Current.ControlType.ProgrammaticName)+'|'+[string]$e.Current.ClassName+'|'+[string]$e.Current.AutomationId+'|'+(I $r.Width)+'x'+(I $r.Height));$count++;if($count -ge 20){break}}}catch{}}
+   throw 'media-preview-not-ready'
+  }
+  $result.stage='verify-publish-button';Save
+  $null=GetMomentPublishButton $panel
+  $result.commitReady=$true;$result.prepared=$true
+  if([string]$req.phase -eq 'prepare'){$result.composeSignature=ComposeSignature $panel;$result.ok=$true;$result.stage='prepared';Save;exit 0}
  }
  if($publish){
   throw 'prepare-commit-required'
@@ -453,6 +563,6 @@ try{
 }catch{
  $result.error=[string]($_.Exception.Message)
  $result.stage='error:'+$result.stage
- if($createdCompose -and -not $result.submissionAttempted){try{CancelCompose}catch{}}
+ if($createdCompose -and -not $result.submissionAttempted){try{CancelCompose;$result.canceled=((Panel) -eq $null)}catch{ $result.notes+='cleanup-unconfirmed' }}
 }
 Save

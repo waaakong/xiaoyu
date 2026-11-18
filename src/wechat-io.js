@@ -94,6 +94,16 @@ export class WeChatIO extends EventEmitter {
     return {base64:result.b64,mime:result.mime};
   }
 
+  async quotedMediaEvent(event,externalId,{signal}={}){
+    const c=this.config(),peer=String(event.message_type==="group"?event.group_id:event.user_id),scope=`wechat:${c.account}:${event.message_type}:${peer}`;
+    if(!this.policy(scope).enabled||!this.connected)return null;
+    const result=await this.reader("/api/v1/messages?talker="+encodeURIComponent(peer)+"&limit=100",{signal,timeout:15000,maxBytes:4*1024*1024});
+    if(this.config().account!==c.account||!this.policy(scope).enabled)return null;
+    const row=result.messages?.find(m=>serverMessageId(m.serverId)===externalId),payload=row?.xiaoyuMediaPayload;
+    if(!payload||payload.sessionId!==peer||serverMessageId(payload.serverId)!==externalId)return null;
+    const source=wechatEvent(payload,0,{config:c,policy:this.policy});return source?{...source,wechatSourceTimestamp:Number(payload.timestamp)*1000}:null;
+  }
+  async readVideo(id,{signal}={}){if(!/^[a-f0-9]{64}$/.test(id))throw Error('微信视频ID无效');const r=await this.reader('/api/v1/images/'+id,{signal,timeout:40000,maxBytes:70*1024*1024});if(r.kind!=='xiaoyu-chat-video'||typeof r.b64!=='string')throw Error('微信视频读取组件尚未就绪或原视频未下载');const bytes=Buffer.from(r.b64,'base64');if(bytes.length>50*1024*1024)throw Error('视频超过50MB');return bytes;}
   async readImage(id,{signal}={}){if(!/^[a-f0-9]{64}$/.test(id))throw Error('微信图片ID无效');const r=await this.reader('/api/v1/images/'+id,{signal,timeout:20000,maxBytes:9*1024*1024});if(typeof r.b64!=='string')throw Error('微信图片尚未解析');const bytes=Buffer.from(r.b64,'base64');if(bytes.length>6*1024*1024)throw Error('微信图片过大');return bytes;}
   async messages(peer){return (await this.reader('/api/v1/messages?talker='+encodeURIComponent(peer)+'&limit=100')).messages??[];}
   async target(event){
